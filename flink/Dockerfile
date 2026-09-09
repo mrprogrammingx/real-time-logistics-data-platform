@@ -6,7 +6,7 @@ COPY schemas ./schemas
 COPY services ./services
 COPY flink ./flink
 RUN --mount=type=cache,target=/root/.m2 \
-    mvn -B -ntp -pl flink -am clean package -DskipTests
+    mvn -B -ntp -pl flink -am clean package -Dmaven.test.skip=true
 
 # Flink 1.20 on a Java 17 runtime (the job jar is compiled to Java 17 bytecode).
 FROM flink:1.20-java17
