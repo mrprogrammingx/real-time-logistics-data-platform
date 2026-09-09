@@ -1,17 +1,25 @@
 # Flink design
 
-> Status: **design** (implemented in Phase 4–5). Jobs live under `flink/` and share
-> `services/common` + the Avro schemas.
+> Status: **implemented** (Phase 4). One module (`flink/`), Java 17 / Flink 1.20, one fat
+> jar, one entry class per job. Shares `services/common` (haversine `GeoPoint`) + the Avro
+> schemas. Every stateful function has a Flink test-harness / MiniCluster test — no Kafka
+> needed to prove the logic.
 
-## Jobs
+## Jobs (Phase 4)
 
-| Job | Input | Key | Core Flink feature | Output |
-|-----|-------|-----|--------------------|--------|
-| `driver-state` | `driver.locations`, `shifts.cdc`, `deliveries.cdc` | `driver_id` | keyed `ValueState` / `MapState` | enriched driver snapshots → TimescaleDB |
-| `delivery-analytics` | `deliveries.cdc`, `orders.cdc`, `driver.geofence-events` | `order_id` | event-time windows, interval join | `delivery.events`, metrics → ClickHouse |
-| `geofencing` | `driver.locations` + broadcast `geofences.cdc` | `driver_id` | `BroadcastState` + point-in-polygon (JTS) | `driver.geofence-events` |
-| `anomaly-detection` | `driver.locations` | `driver_id` | `KeyedProcessFunction` + timers | `delivery.alerts` |
-| `ingestion` (in each job) | raw topic | — | `ProcessFunction` side output | valid stream + `*.dlq` |
+| Entry class | Input | Key | Core Flink feature | Output |
+|-------------|-------|-----|--------------------|--------|
+| `driverstate.DriverStateJob` | `driver.locations` | `driver_id` | `KeyedProcessFunction` + `ValueState` + event-time timer | `flowfleet.driver.state` |
+| `speed.DriverSpeedJob` | `driver.locations` | `driver_id` | event-time `TumblingEventTimeWindows` + `ProcessWindowFunction`, late-data side output | `flowfleet.driver.speed-windows` |
+| `geofence.GeofenceJob` | `driver.locations` + broadcast geofences | `driver_id` | `KeyedBroadcastProcessFunction` + JTS point-in-polygon | `flowfleet.driver.geofence-events` |
+| `anomaly.AnomalyJob` | `driver.locations` | `driver_id` | `KeyedProcessFunction` + timers | `flowfleet.delivery.alerts` |
+| `GpsGuard` (in every job) | raw stream | — | `ProcessFunction` side output | valid stream + `flowfleet.driver.locations.dlq` |
+
+**Not yet built** (Phase 4.5 / later): `delivery-analytics` (interval join of
+`deliveries.cdc` × geofence events → `delivery.events`), `ORDER_PICKUP_TIMEOUT` (timer on
+`deliveries.cdc`). The geofence job currently broadcasts a bundled `geofences.json`; the
+production wiring is a `flowfleet.geofences.cdc` broadcast source (same
+`GeofenceFunction`).
 
 ## Driver state (keyed state)
 

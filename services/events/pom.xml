@@ -16,6 +16,11 @@
     <description>Avro schemas (generated SpecificRecords), Kafka topic catalogue, and an AdminClient-based
         topic bootstrapper. Shared by producers, consumers and the Flink jobs.</description>
 
+    <properties>
+        <!-- Java 17 bytecode — consumed by the Flink jobs (Flink 1.20 on a Java 17 JVM). -->
+        <maven.compiler.release>17</maven.compiler.release>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>org.apache.avro</groupId>

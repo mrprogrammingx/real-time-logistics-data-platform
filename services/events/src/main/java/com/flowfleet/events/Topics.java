@@ -28,6 +28,10 @@ public final class Topics {
     public static final String DELIVERY_ALERTS = "flowfleet.delivery.alerts";
     public static final String DRIVER_LOCATIONS_DLQ = "flowfleet.driver.locations.dlq";
 
+    // --- produced by the Flink jobs (Phase 4) ----------------------------------
+    public static final String DRIVER_STATE = "flowfleet.driver.state";
+    public static final String DRIVER_SPEED_WINDOWS = "flowfleet.driver.speed-windows";
+
     // --- produced by Debezium (Phase 3): flowfleet.public.<table> routed to flowfleet.<table>.cdc
     public static final String ORDERS_CDC = "flowfleet.orders.cdc";
     public static final String ORDER_ITEMS_CDC = "flowfleet.order_items.cdc";
@@ -55,7 +59,11 @@ public final class Topics {
                 new TopicSpec(DELIVERY_ALERTS, 3, (short) 1,
                         TopicSpec.retention(Duration.ofDays(30))),
                 new TopicSpec(DRIVER_LOCATIONS_DLQ, 3, (short) 1,
-                        TopicSpec.retention(Duration.ofDays(14))));
+                        TopicSpec.retention(Duration.ofDays(14))),
+                new TopicSpec(DRIVER_STATE, 6, (short) 1,
+                        TopicSpec.retention(Duration.ofHours(24))),
+                new TopicSpec(DRIVER_SPEED_WINDOWS, 3, (short) 1,
+                        TopicSpec.retention(Duration.ofDays(7))));
     }
 
     private static Map<String, String> merge(Map<String, String> a, Map<String, String> b) {

@@ -1,0 +1,10 @@
+[
+  { "id": 1, "name": "Republic Square pickup", "type": "RESTAURANT",
+    "polygonWkt": "POLYGON((44.5126 40.1770, 44.5140 40.1770, 44.5140 40.1782, 44.5126 40.1782, 44.5126 40.1770))" },
+  { "id": 2, "name": "Opera pickup", "type": "RESTAURANT",
+    "polygonWkt": "POLYGON((44.5146 40.1866, 44.5160 40.1866, 44.5160 40.1878, 44.5146 40.1878, 44.5146 40.1866))" },
+  { "id": 3, "name": "Cascade pickup", "type": "RESTAURANT",
+    "polygonWkt": "POLYGON((44.5187 40.1901, 44.5201 40.1901, 44.5201 40.1913, 44.5187 40.1913, 44.5187 40.1901))" },
+  { "id": 4, "name": "Kentron delivery zone", "type": "ZONE",
+    "polygonWkt": "POLYGON((44.4980 40.1700, 44.5300 40.1700, 44.5300 40.1950, 44.4980 40.1950, 44.4980 40.1700))" }
+]

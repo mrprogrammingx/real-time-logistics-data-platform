@@ -2,10 +2,11 @@
 FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /workspace
 COPY pom.xml ./
+COPY flink/pom.xml ./flink/pom.xml
 COPY schemas ./schemas
 COPY services ./services
 RUN --mount=type=cache,target=/root/.m2 \
-    mvn -B -ntp -pl services/location-generator -am clean package -DskipTests
+    mvn -B -ntp -pl services/location-generator -am clean package -Dmaven.test.skip=true
 
 FROM eclipse-temurin:21-jre AS runtime
 WORKDIR /app

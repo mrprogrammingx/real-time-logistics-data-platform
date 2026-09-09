@@ -1,0 +1,21 @@
+{
+  "type": "record",
+  "name": "DriverSnapshot",
+  "namespace": "com.flowfleet.events.avro",
+  "doc": "The current, enriched state of one driver, emitted by the Flink driver-state job on every GPS sample.",
+  "fields": [
+    { "name": "driverId", "type": "long" },
+    { "name": "latitude", "type": "double" },
+    { "name": "longitude", "type": "double" },
+    { "name": "prevLatitude", "type": ["null", "double"], "default": null },
+    { "name": "prevLongitude", "type": ["null", "double"], "default": null },
+    { "name": "reportedSpeedKph", "type": ["null", "double"], "default": null, "doc": "as sent by the device" },
+    { "name": "derivedSpeedKph", "type": ["null", "double"], "default": null, "doc": "from consecutive positions / event-time delta" },
+    { "name": "headingDegrees", "type": ["null", "int"], "default": null },
+    { "name": "vehicleType", "type": ["null", "string"], "default": null },
+    { "name": "tripDistanceMeters", "type": "double", "default": 0.0, "doc": "cumulative since state was created / reset" },
+    { "name": "sampleCount", "type": "long", "default": 0 },
+    { "name": "eventTime", "type": { "type": "long", "logicalType": "timestamp-millis" } },
+    { "name": "processingLagMs", "type": "long", "default": 0, "doc": "wall clock at emit - eventTime" }
+  ]
+}

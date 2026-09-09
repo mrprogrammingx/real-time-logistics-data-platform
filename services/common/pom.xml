@@ -15,6 +15,12 @@
     <name>FlowFleet :: Common Domain Model</name>
     <description>Framework-free domain records and enums shared by services and Flink jobs.</description>
 
+    <properties>
+        <!-- Compiled to Java 17 bytecode: this jar is consumed by the Flink jobs, whose
+             runtime (Flink 1.20) targets a Java 17 JVM. The Spring services run on 21. -->
+        <maven.compiler.release>17</maven.compiler.release>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>org.junit.jupiter</groupId>

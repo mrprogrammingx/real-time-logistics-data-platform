@@ -38,8 +38,13 @@ jobs:
     needs: build
     strategy:
       matrix:
-        service: [api, location-generator, location-consumer, connect]
+        include:
+          - { name: api,                dockerfile: services/api/Dockerfile }
+          - { name: location-generator, dockerfile: services/location-generator/Dockerfile }
+          - { name: location-consumer,  dockerfile: services/location-consumer/Dockerfile }
+          - { name: connect,            dockerfile: services/connect/Dockerfile }
+          - { name: flink,              dockerfile: flink/Dockerfile }
     steps:
       - uses: actions/checkout@v4
-      - name: Build the ${{ matrix.service }} image (no push)
-        run: docker build -f services/${{ matrix.service }}/Dockerfile -t flowfleet/${{ matrix.service }}:ci .
+      - name: Build the ${{ matrix.name }} image (no push)
+        run: docker build -f ${{ matrix.dockerfile }} -t flowfleet/${{ matrix.name }}:ci .

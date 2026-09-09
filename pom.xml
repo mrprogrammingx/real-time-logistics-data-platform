@@ -18,6 +18,7 @@
         <module>services/cdc</module>
         <module>services/location-generator</module>
         <module>services/location-consumer</module>
+        <module>flink</module>
     </modules>
 
     <properties>
@@ -36,6 +37,11 @@
         <!-- Debezium: keep the connector plugin (services/connect/Dockerfile) on the same
              version, and both aligned with Kafka 3.8 (Debezium 3.0.x targets Kafka 3.8). -->
         <debezium.version>3.0.8.Final</debezium.version>
+        <!-- Flink 1.20 runs on a Java 17 JVM, so the flink module (and flowfleet-common /
+             flowfleet-events, which it consumes) compile to Java 17 bytecode. -->
+        <flink.version>1.20.1</flink.version>
+        <flink.kafka.connector.version>3.3.0-1.20</flink.kafka.connector.version>
+        <jts.version>1.20.0</jts.version>
 
         <!-- Plugin versions -->
         <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
@@ -109,6 +115,65 @@
                 <version>${debezium.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+
+            <!-- Flink -->
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-streaming-java</artifactId>
+                <version>${flink.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-clients</artifactId>
+                <version>${flink.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-runtime-web</artifactId>
+                <version>${flink.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-connector-base</artifactId>
+                <version>${flink.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-connector-kafka</artifactId>
+                <version>${flink.kafka.connector.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-avro</artifactId>
+                <version>${flink.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-avro-confluent-registry</artifactId>
+                <version>${flink.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-test-utils</artifactId>
+                <version>${flink.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-streaming-java</artifactId>
+                <version>${flink.version}</version>
+                <type>test-jar</type>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-runtime</artifactId>
+                <version>${flink.version}</version>
+                <type>test-jar</type>
+            </dependency>
+            <dependency>
+                <groupId>org.locationtech.jts</groupId>
+                <artifactId>jts-core</artifactId>
+                <version>${jts.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
