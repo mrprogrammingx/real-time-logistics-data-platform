@@ -12,5 +12,6 @@ RUN --mount=type=cache,target=/root/.m2 \
 FROM flink:1.20-java17
 COPY --from=build /workspace/flink/target/flowfleet-flink-jobs.jar \
      /opt/flink/usrlib/flowfleet-flink-jobs.jar
-# Enable the Prometheus metrics reporter (ships in opt/, must be on the classpath).
-RUN cp /opt/flink/opt/flink-metrics-prometheus-*.jar /opt/flink/lib/
+# The Prometheus reporter ships pre-placed at
+# /opt/flink/plugins/metrics-prometheus/ in this image and is auto-loaded, so
+# `metrics.reporter.prom.*` in FLINK_PROPERTIES is all that's needed — no copy.
