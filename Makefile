@@ -87,6 +87,30 @@ lag: ## Show consumer-group lag for the location consumers
 	$(COMPOSE) exec kafka kafka-consumer-groups --bootstrap-server kafka:29092 \
 		--describe --group flowfleet.location-consumer
 
+## ----- cdc (debezium) ---------------------------------------------------------
+
+.PHONY: cdc-register
+cdc-register: ## Register the Debezium PostgreSQL source connector
+	./scripts/connect.sh register
+
+.PHONY: cdc-status
+cdc-status: ## Connector + task state
+	./scripts/connect.sh status
+
+.PHONY: cdc-slot
+cdc-slot: ## PostgreSQL replication-slot health (active? WAL retained?)
+	./scripts/connect.sh slot
+
+.PHONY: cdc-tail
+cdc-tail: ## Print orders.cdc events as JSON (Ctrl-C to stop)
+	$(COMPOSE) exec schema-registry kafka-avro-console-consumer \
+		--bootstrap-server kafka:29092 --property schema.registry.url=http://localhost:8085 \
+		--topic flowfleet.orders.cdc --from-beginning --property print.key=true
+
+.PHONY: cdc-demo
+cdc-demo: ## Change an order via the API and watch the CDC event land
+	./scripts/cdc-demo.sh
+
 ## ----- demo ---------------------------------------------------------------
 
 .PHONY: smoke

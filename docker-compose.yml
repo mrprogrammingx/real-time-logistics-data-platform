@@ -1,16 +1,17 @@
 # ============================================================================
-# FlowFleet — local stack (Phases 1–2).
+# FlowFleet — local stack (Phases 1–3).
 #
 #   postgres           : PostGIS operational database (source of truth)
 #   api                : Spring Boot service, runs Flyway migrations on startup
 #   adminer            : DB UI                     http://localhost:18081
 #   kafka              : single-node KRaft broker  localhost:19092 (host)
 #   schema-registry    : Confluent Schema Registry http://localhost:18085
-#   kafka-ui           : topics / groups / lag UI  http://localhost:18082
+#   kafka-ui           : topics / groups / connect http://localhost:18082
+#   kafka-connect      : Debezium PostgreSQL CDC   http://localhost:18083
 #   location-generator : simulated fleet -> flowfleet.driver.locations
 #   location-consumer  : consumer-group member (scale with --scale)
 #
-# Debezium, Flink, ClickHouse, etc. arrive in later phases.
+# Flink, ClickHouse, etc. arrive in later phases.
 # ============================================================================
 name: flowfleet
 
@@ -137,7 +138,48 @@ services:
       KAFKA_CLUSTERS_0_NAME: flowfleet
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
       KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8085
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_NAME: connect
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS: http://kafka-connect:8083
       DYNAMIC_CONFIG_ENABLED: "true"
+
+  # --------------------------------------------------------------------------
+  # Kafka Connect (distributed) + the Debezium PostgreSQL connector.
+  # Register the connector with:  make cdc-register
+  # --------------------------------------------------------------------------
+  kafka-connect:
+    build:
+      context: .
+      dockerfile: services/connect/Dockerfile
+    image: flowfleet/kafka-connect:0.1.0
+    container_name: flowfleet-kafka-connect
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    ports:
+      - "18083:8083"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: kafka:29092
+      CONNECT_GROUP_ID: flowfleet-connect
+      CONNECT_CONFIG_STORAGE_TOPIC: _connect-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: _connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: _connect-status
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8083/connectors >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 24
 
   location-generator:
     build:

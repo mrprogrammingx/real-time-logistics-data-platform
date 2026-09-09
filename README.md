@@ -58,8 +58,8 @@ and a set of interview questions it lets you answer from experience.
 |------:|-------|-------|
 | **1** | Java 21 domain model, PostgreSQL/PostGIS schema, Spring Boot operational API | ✅ **done** |
 | **2** | Kafka topic design, Avro + Schema Registry, location simulator, consumer-group rebalancing | ✅ **done** |
-| 3 | Debezium CDC from PostgreSQL, snapshot vs streaming, connector recovery | ⬜ next |
-| 4 | Flink jobs: driver state, watermarks/windows, timers, geofencing | ⬜ |
+| **3** | Debezium CDC from PostgreSQL — snapshot vs streaming, before/after, tombstones, slot & connector recovery | ✅ **done** |
+| 4 | Flink jobs: driver state, watermarks/windows, timers, geofencing | ⬜ next |
 | 5 | Production sinks: Timescale/ClickHouse/BigQuery, idempotency, DLQ | ⬜ |
 | 6 | Failure engineering: kill TaskManager, slow sink, malformed & duplicate events | ⬜ |
 | 7 | Kubernetes, Flink K8s Operator, Helm, ArgoCD, Prometheus/Grafana | ⬜ |
@@ -70,7 +70,23 @@ Phase details and per-phase interview questions live in [`docs/`](docs/) and
 
 ---
 
-## Phase 2 — what's here now
+## Phase 3 — what's here now
+
+* **`services/cdc`** — a reusable Debezium **embedded-engine** wrapper (`DebeziumCdcSource`)
+  and a parsed view of the envelope (`CdcRecord` / `CdcEnvelopeParser`). `PostgresCdcIT`
+  runs the real connector against a PostgreSQL Testcontainer and asserts the initial
+  snapshot (`op:r`), then INSERT/UPDATE/DELETE from the WAL with full before/after images
+  and a tombstone.
+* **`services/connect`** — `Dockerfile` = cp-kafka-connect + the Debezium PostgreSQL
+  connector; runs as the `kafka-connect` service (REST on :18083, distributed mode).
+* **`kafka-connect/postgres-source.json`** — the connector config: `pgoutput`,
+  `snapshot.mode=initial`, `tombstones.on.delete`, Avro converter, and a `RegexRouter` that
+  maps `flowfleet.public.orders` → `flowfleet.orders.cdc`.
+* **`V3__cdc_replica_identity.sql`** — `REPLICA IDENTITY FULL` on the captured tables.
+* `make cdc-register` / `cdc-status` / `cdc-slot` / `cdc-tail` / `cdc-demo`; recovery
+  experiment in [`docs/experiments/phase-3-cdc-recovery.md`](docs/experiments/phase-3-cdc-recovery.md).
+
+<details><summary>Phase 2 — Kafka + Avro + location stream (still here)</summary>
 
 * **`services/events`** — Avro schemas (`schemas/*.avsc` → generated `SpecificRecord`s),
   the [`Topics`](services/events/src/main/java/com/flowfleet/events/Topics.java) catalogue,
@@ -87,6 +103,8 @@ Phase details and per-phase interview questions live in [`docs/`](docs/) and
   `vehicleType` as nullable-with-default ⇒ FULL-compatible, proven by a pure-Avro test.
 * Tests: schema-compat unit test, deterministic simulator tests, and a **Redpanda**
   Testcontainers IT doing a real Avro → Schema Registry → Kafka → deserialize round trip.
+
+</details>
 
 <details><summary>Phase 1 — operational API (still here)</summary>
 
@@ -118,17 +136,20 @@ make smoke         # API: create a driver + order, walk it to DELIVERED (needs j
 make schemas       # show the registered DriverLocation schema
 make lag           # consumer-group lag
 make rebalance-demo  # scale consumers to 3, kill one, print the partition reassignment
+make cdc-register  # register the Debezium PostgreSQL source connector
+make cdc-demo      # change an order via the API, watch the CDC event land
 make down          # stop (keep data)   |   make clean-data  (drop volumes)
 ```
 
-The first `make up` builds three service images from source (each runs Maven), ~3–5 min,
-and the full stack is ~8 containers — give Docker a couple of GB of headroom.
+The first `make up` builds four service images from source (each runs Maven) and the full
+stack is ~10 containers — give Docker a few GB of headroom.
 
 | Service | URL / address |
 |---|---|
 | API + Swagger | http://localhost:18080 · `/swagger-ui.html` |
 | Adminer | http://localhost:18081 (`server=postgres db/user/pass=flowfleet`) |
 | Kafka UI | http://localhost:18082 |
+| Kafka Connect | http://localhost:18083/connectors |
 | Schema Registry | http://localhost:18085/subjects |
 | Generator metrics | http://localhost:18090/actuator/prometheus |
 | Kafka (host) | `localhost:19092` · Postgres `localhost:15432` |
@@ -157,22 +178,24 @@ make kafka-tail
 .
 ├── pom.xml                     Maven reactor (Java 21)
 ├── Makefile                    developer entrypoints
-├── docker-compose.yml          local stack (Phases 1–2)
+├── docker-compose.yml          local stack (Phases 1–3)
 ├── schemas/                    canonical Avro .avsc files
+├── kafka-connect/              Debezium connector config + notes
 ├── architecture/               design docs (Kafka, Flink, CDC, idempotency, recovery)
-├── docs/                       phase roadmap + interview questions
+├── docs/                       phase roadmap + interview questions + experiments
 ├── database/                   database notes (schema is Flyway-managed in services/api)
-├── scripts/                    smoke.sh, kafka-topics.sh, schema-registry.sh, rebalance-demo.sh
+├── scripts/                    smoke / kafka-topics / schema-registry / rebalance-demo / connect / cdc-demo
 └── services/
     ├── common/                 domain model (no framework deps)
     ├── events/                 Avro-generated events + Kafka topic catalogue
     ├── api/                    Spring Boot operational API + Flyway migrations
+    ├── cdc/                    Debezium embedded-engine wrapper + envelope parser
+    ├── connect/                Kafka Connect + Debezium PG connector image
     ├── location-generator/     driver GPS simulator → Kafka
     └── location-consumer/      consumer-group member (rebalance experiment)
 ```
 
-Later phases add `flink/`, `kafka-connect/`, `helm/`, `argocd/`, `monitoring/`, and
-`load-testing/`.
+Later phases add `flink/`, `helm/`, `argocd/`, `monitoring/`, and `load-testing/`.
 
 ---
 
@@ -184,6 +207,7 @@ Later phases add `flink/`, `kafka-connect/`, `helm/`, `argocd/`, `monitoring/`, 
 | Build | Maven (multi-module, `./mvnw`) |
 | API | Spring Boot 3.4, Spring Data JDBC, Flyway |
 | Streaming | Apache Kafka 3.8 (KRaft), Confluent Schema Registry, Avro 1.12 |
+| CDC | Debezium 3.0 (Kafka Connect + embedded engine) |
 | DB | PostgreSQL 16 + PostGIS 3.5 (`imresamu/postgis`, multi-arch) |
 | Tests | JUnit 5, AssertJ, Mockito, Testcontainers (PostGIS + Redpanda) |
 | Containers | Docker / Docker Compose |
