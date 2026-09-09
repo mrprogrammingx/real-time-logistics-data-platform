@@ -1,0 +1,15 @@
+{
+  "type": "record",
+  "name": "DriverSpeedWindow",
+  "namespace": "com.flowfleet.events.avro",
+  "doc": "Per-driver movement aggregates over a Flink event-time window (driver-speed job).",
+  "fields": [
+    { "name": "driverId", "type": "long" },
+    { "name": "windowStart", "type": { "type": "long", "logicalType": "timestamp-millis" } },
+    { "name": "windowEnd", "type": { "type": "long", "logicalType": "timestamp-millis" } },
+    { "name": "sampleCount", "type": "long" },
+    { "name": "avgSpeedKph", "type": "double" },
+    { "name": "maxSpeedKph", "type": "double" },
+    { "name": "distanceMeters", "type": "double" }
+  ]
+}

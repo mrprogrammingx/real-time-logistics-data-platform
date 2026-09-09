@@ -111,6 +111,26 @@ cdc-tail: ## Print orders.cdc events as JSON (Ctrl-C to stop)
 cdc-demo: ## Change an order via the API and watch the CDC event land
 	./scripts/cdc-demo.sh
 
+## ----- flink ------------------------------------------------------------------
+
+.PHONY: flink-submit-all
+flink-submit-all: ## Submit all four Flink jobs to the session cluster
+	./scripts/flink.sh submit-all
+
+.PHONY: flink-list
+flink-list: ## List running Flink jobs
+	./scripts/flink.sh list
+
+.PHONY: flink-cancel-all
+flink-cancel-all: ## Cancel all running Flink jobs
+	./scripts/flink.sh cancel-all
+
+.PHONY: flink-tail
+flink-tail: ## Print driver.state snapshots as JSON (Ctrl-C to stop)
+	$(COMPOSE) exec schema-registry kafka-avro-console-consumer \
+		--bootstrap-server kafka:29092 --property schema.registry.url=http://localhost:8085 \
+		--topic flowfleet.driver.state --property print.key=true
+
 ## ----- demo ---------------------------------------------------------------
 
 .PHONY: smoke

@@ -1,5 +1,5 @@
 # ============================================================================
-# FlowFleet — local stack (Phases 1–3).
+# FlowFleet — local stack (Phases 1–4).
 #
 #   postgres           : PostGIS operational database (source of truth)
 #   api                : Spring Boot service, runs Flyway migrations on startup
@@ -8,10 +8,13 @@
 #   schema-registry    : Confluent Schema Registry http://localhost:18085
 #   kafka-ui           : topics / groups / connect http://localhost:18082
 #   kafka-connect      : Debezium PostgreSQL CDC   http://localhost:18083
+#   flink-jobmanager   : Flink session cluster UI  http://localhost:18086
+#   flink-taskmanager  : Flink worker (scale with --scale)
 #   location-generator : simulated fleet -> flowfleet.driver.locations
 #   location-consumer  : consumer-group member (scale with --scale)
 #
-# Flink, ClickHouse, etc. arrive in later phases.
+# ClickHouse / TimescaleDB / BigQuery sinks arrive in later phases.
+# Submit the Flink jobs with:  make flink-submit-all
 # ============================================================================
 name: flowfleet
 
@@ -180,6 +183,53 @@ services:
       interval: 10s
       timeout: 5s
       retries: 24
+
+  # --------------------------------------------------------------------------
+  # Flink session cluster. Job jar is baked into the image at
+  # /opt/flink/usrlib/flowfleet-flink-jobs.jar — submit with `make flink-submit-*`.
+  # --------------------------------------------------------------------------
+  flink-jobmanager:
+    build:
+      context: .
+      dockerfile: flink/Dockerfile
+    image: flowfleet/flink:0.1.0
+    container_name: flowfleet-flink-jobmanager
+    command: jobmanager
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+    ports:
+      - "18086:8081"
+    environment:
+      KAFKA_BOOTSTRAP: kafka:29092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8085
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        state.backend.type: rocksdb
+        execution.checkpointing.interval: 30s
+        execution.checkpointing.unaligned: true
+        execution.checkpointing.externalized-checkpoint-retention: RETAIN_ON_CANCELLATION
+        restart-strategy.type: exponential-delay
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/overview >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  flink-taskmanager:
+    image: flowfleet/flink:0.1.0
+    command: taskmanager
+    depends_on:
+      flink-jobmanager:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP: kafka:29092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8085
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 4
 
   location-generator:
     build:

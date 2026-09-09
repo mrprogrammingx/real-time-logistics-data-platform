@@ -59,8 +59,8 @@ and a set of interview questions it lets you answer from experience.
 | **1** | Java 21 domain model, PostgreSQL/PostGIS schema, Spring Boot operational API | ✅ **done** |
 | **2** | Kafka topic design, Avro + Schema Registry, location simulator, consumer-group rebalancing | ✅ **done** |
 | **3** | Debezium CDC from PostgreSQL — snapshot vs streaming, before/after, tombstones, slot & connector recovery | ✅ **done** |
-| 4 | Flink jobs: driver state, watermarks/windows, timers, geofencing | ⬜ next |
-| 5 | Production sinks: Timescale/ClickHouse/BigQuery, idempotency, DLQ | ⬜ |
+| **4** | Flink jobs — keyed driver state, event-time windows, timers, geofencing (broadcast + JTS) | ✅ **done** |
+| 5 | Production sinks: Timescale/ClickHouse/BigQuery, idempotency, DLQ | ⬜ next |
 | 6 | Failure engineering: kill TaskManager, slow sink, malformed & duplicate events | ⬜ |
 | 7 | Kubernetes, Flink K8s Operator, Helm, ArgoCD, Prometheus/Grafana | ⬜ |
 | 8 | Load testing 1k→50k events/s, tuning, autoscaling | ⬜ |
@@ -70,21 +70,34 @@ Phase details and per-phase interview questions live in [`docs/`](docs/) and
 
 ---
 
-## Phase 3 — what's here now
+## Phase 4 — what's here now
+
+**`flink/`** — one module (Java 17 / Flink 1.20), one fat jar, one entry class per job.
+Every stateful function has a Flink test-harness or MiniCluster test (no Kafka needed).
+
+| Job | Flink feature it demonstrates |
+|-----|------------------------------|
+| [`DriverStateJob`](flink/src/main/java/com/flowfleet/flink/driverstate/DriverStateFunction.java) | `keyBy(driverId)` + `ValueState`; instantaneous speed derived from the position delta over the event-time gap; an event-time timer that expires state when a driver goes dark |
+| [`DriverSpeedJob`](flink/src/main/java/com/flowfleet/flink/speed/DriverSpeedJob.java) | event time + watermarks (`forBoundedOutOfOrderness(5s)` + idleness); 1-minute `TumblingEventTimeWindows`; late data → side output, not dropped |
+| [`GeofenceJob`](flink/src/main/java/com/flowfleet/flink/geofence/GeofenceFunction.java) | `KeyedBroadcastProcessFunction` — geofence polygons broadcast to every subtask, JTS point-in-polygon, only ENTER/EXIT transitions emitted |
+| [`AnomalyJob`](flink/src/main/java/com/flowfleet/flink/anomaly/AnomalyFunction.java) | `KeyedProcessFunction` + timers — impossible-speed rule + GPS-gap timer → `flowfleet.delivery.alerts` |
+| `GpsGuard` (in every job) | `ProcessFunction` side output — bad samples → `flowfleet.driver.locations.dlq` |
+
+compose gains a **Flink session cluster** (`flink-jobmanager` + `flink-taskmanager`, UI on
+:18086); `make flink-submit-all` deploys all four jobs. Experiment walkthrough in
+[`docs/experiments/phase-4-watermarks-windows.md`](docs/experiments/phase-4-watermarks-windows.md).
+
+<details><summary>Phase 3 — Debezium CDC (still here)</summary>
 
 * **`services/cdc`** — a reusable Debezium **embedded-engine** wrapper (`DebeziumCdcSource`)
-  and a parsed view of the envelope (`CdcRecord` / `CdcEnvelopeParser`). `PostgresCdcIT`
-  runs the real connector against a PostgreSQL Testcontainer and asserts the initial
-  snapshot (`op:r`), then INSERT/UPDATE/DELETE from the WAL with full before/after images
-  and a tombstone.
-* **`services/connect`** — `Dockerfile` = cp-kafka-connect + the Debezium PostgreSQL
-  connector; runs as the `kafka-connect` service (REST on :18083, distributed mode).
-* **`kafka-connect/postgres-source.json`** — the connector config: `pgoutput`,
-  `snapshot.mode=initial`, `tombstones.on.delete`, Avro converter, and a `RegexRouter` that
-  maps `flowfleet.public.orders` → `flowfleet.orders.cdc`.
-* **`V3__cdc_replica_identity.sql`** — `REPLICA IDENTITY FULL` on the captured tables.
-* `make cdc-register` / `cdc-status` / `cdc-slot` / `cdc-tail` / `cdc-demo`; recovery
-  experiment in [`docs/experiments/phase-3-cdc-recovery.md`](docs/experiments/phase-3-cdc-recovery.md).
+  + a parsed view of the envelope (`CdcRecord`). `PostgresCdcIT` asserts snapshot (`op:r`)
+  → INSERT/UPDATE/DELETE from the WAL with before/after → tombstone.
+* **`services/connect`** — cp-kafka-connect + the Debezium PostgreSQL connector, as the
+  `kafka-connect` service. **`kafka-connect/postgres-source.json`** — `pgoutput`,
+  `snapshot.mode=initial`, Avro, `RegexRouter` → `flowfleet.orders.cdc`.
+* **`V3`** — `REPLICA IDENTITY FULL`. `make cdc-register / cdc-status / cdc-slot / cdc-demo`.
+
+</details>
 
 <details><summary>Phase 2 — Kafka + Avro + location stream (still here)</summary>
 
@@ -138,11 +151,13 @@ make lag           # consumer-group lag
 make rebalance-demo  # scale consumers to 3, kill one, print the partition reassignment
 make cdc-register  # register the Debezium PostgreSQL source connector
 make cdc-demo      # change an order via the API, watch the CDC event land
+make flink-submit-all  # deploy the four Flink jobs to the session cluster
+make flink-tail    # watch enriched driver.state snapshots
 make down          # stop (keep data)   |   make clean-data  (drop volumes)
 ```
 
-The first `make up` builds four service images from source (each runs Maven) and the full
-stack is ~10 containers — give Docker a few GB of headroom.
+The first `make up` builds five images from source (each runs Maven) and the full stack is
+~12 containers — give Docker a few GB of headroom.
 
 | Service | URL / address |
 |---|---|
@@ -151,6 +166,7 @@ stack is ~10 containers — give Docker a few GB of headroom.
 | Kafka UI | http://localhost:18082 |
 | Kafka Connect | http://localhost:18083/connectors |
 | Schema Registry | http://localhost:18085/subjects |
+| Flink UI | http://localhost:18086 |
 | Generator metrics | http://localhost:18090/actuator/prometheus |
 | Kafka (host) | `localhost:19092` · Postgres `localhost:15432` |
 
@@ -176,18 +192,19 @@ make kafka-tail
 
 ```
 .
-├── pom.xml                     Maven reactor (Java 21)
+├── pom.xml                     Maven reactor
 ├── Makefile                    developer entrypoints
-├── docker-compose.yml          local stack (Phases 1–3)
+├── docker-compose.yml          local stack (Phases 1–4)
 ├── schemas/                    canonical Avro .avsc files
 ├── kafka-connect/              Debezium connector config + notes
 ├── architecture/               design docs (Kafka, Flink, CDC, idempotency, recovery)
 ├── docs/                       phase roadmap + interview questions + experiments
 ├── database/                   database notes (schema is Flyway-managed in services/api)
-├── scripts/                    smoke / kafka-topics / schema-registry / rebalance-demo / connect / cdc-demo
+├── scripts/                    smoke / kafka-topics / schema-registry / rebalance-demo / connect / cdc-demo / flink
+├── flink/                      Flink jobs (Java 17, Flink 1.20) — one fat jar, one class per job
 └── services/
-    ├── common/                 domain model (no framework deps)
-    ├── events/                 Avro-generated events + Kafka topic catalogue
+    ├── common/                 domain model, no framework deps (Java 17)
+    ├── events/                 Avro-generated events + Kafka topic catalogue (Java 17)
     ├── api/                    Spring Boot operational API + Flyway migrations
     ├── cdc/                    Debezium embedded-engine wrapper + envelope parser
     ├── connect/                Kafka Connect + Debezium PG connector image
@@ -195,7 +212,7 @@ make kafka-tail
     └── location-consumer/      consumer-group member (rebalance experiment)
 ```
 
-Later phases add `flink/`, `helm/`, `argocd/`, `monitoring/`, and `load-testing/`.
+Later phases add `helm/`, `argocd/`, `monitoring/`, and `load-testing/`.
 
 ---
 
@@ -203,13 +220,14 @@ Later phases add `flink/`, `helm/`, `argocd/`, `monitoring/`, and `load-testing/
 
 | | |
 |---|---|
-| Language | Java 21 |
+| Language | Java 21 (services) / Java 17 (Flink + shared libs) |
 | Build | Maven (multi-module, `./mvnw`) |
 | API | Spring Boot 3.4, Spring Data JDBC, Flyway |
 | Streaming | Apache Kafka 3.8 (KRaft), Confluent Schema Registry, Avro 1.12 |
 | CDC | Debezium 3.0 (Kafka Connect + embedded engine) |
+| Stream processing | Apache Flink 1.20 (DataStream), JTS for geofencing |
 | DB | PostgreSQL 16 + PostGIS 3.5 (`imresamu/postgis`, multi-arch) |
-| Tests | JUnit 5, AssertJ, Mockito, Testcontainers (PostGIS + Redpanda) |
+| Tests | JUnit 5, AssertJ, Mockito, Testcontainers (PostGIS + Redpanda), Flink test-harness + MiniCluster |
 | Containers | Docker / Docker Compose |
 
 > **Note on Docker API version:** Docker Engine 29+ requires API ≥ 1.44. The Testcontainers
