@@ -33,14 +33,13 @@ package: ## Build all service fat-jars, skipping tests
 ## ----- local stack ----------------------------------------------------------
 
 .PHONY: up
-up: ## Start the whole stack (Postgres, API, Kafka, Schema Registry, generator, consumer)
+up: ## Start the whole stack (~14 containers). Then: make cdc-register && make flink-submit-all
 	$(COMPOSE) up -d --build
 	@echo "API        : http://localhost:18080     Swagger: /swagger-ui.html"
-	@echo "Adminer    : http://localhost:18081     (server=postgres db=flowfleet user=flowfleet pass=flowfleet)"
-	@echo "Kafka UI   : http://localhost:18082"
-	@echo "Schema Reg : http://localhost:18085/subjects"
-	@echo "Generator  : http://localhost:18090/actuator/prometheus"
-	@echo "Kafka      : localhost:19092   Postgres: localhost:15432"
+	@echo "Adminer    : http://localhost:18081     Kafka UI: http://localhost:18082"
+	@echo "Connect    : http://localhost:18083     Schema Reg: http://localhost:18085/subjects"
+	@echo "Flink UI   : http://localhost:18086     ClickHouse: http://localhost:18123/play"
+	@echo "Kafka 19092 · Postgres 15432 · TimescaleDB 15433"
 
 .PHONY: down
 down: ## Stop the stack, keep the database volume
