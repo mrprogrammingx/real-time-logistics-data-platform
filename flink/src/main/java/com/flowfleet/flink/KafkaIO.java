@@ -1,5 +1,8 @@
 package com.flowfleet.flink;
 
+import com.flowfleet.events.Topics;
+import com.flowfleet.flink.ingest.ParsedLocation;
+import com.flowfleet.flink.ingest.ResilientLocationDeserializer;
 import java.nio.charset.StandardCharsets;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.flink.api.common.serialization.SerializationSchema;
@@ -31,6 +34,21 @@ public final class KafkaIO {
                 .setStartingOffsets(OffsetsInitializer.earliest())
                 .setValueOnlyDeserializer(
                         ConfluentRegistryAvroDeserializationSchema.forSpecific(type, cfg.schemaRegistryUrl))
+                .build();
+    }
+
+    /**
+     * {@code flowfleet.driver.locations} decoded resiliently — a poison message becomes a
+     * {@link ParsedLocation} with {@code error} set instead of failing the job.
+     * {@code LocationIngest} routes the failures to the DLQ.
+     */
+    public static KafkaSource<ParsedLocation> resilientLocationSource(JobConfig cfg, String groupId) {
+        return KafkaSource.<ParsedLocation>builder()
+                .setBootstrapServers(cfg.bootstrapServers)
+                .setTopics(Topics.DRIVER_LOCATIONS)
+                .setGroupId(groupId)
+                .setStartingOffsets(OffsetsInitializer.earliest())
+                .setDeserializer(new ResilientLocationDeserializer(cfg.schemaRegistryUrl))
                 .build();
     }
 

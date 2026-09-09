@@ -3,11 +3,11 @@ package com.flowfleet.flink.speed;
 import com.flowfleet.events.Topics;
 import com.flowfleet.events.avro.DriverLocation;
 import com.flowfleet.events.avro.DriverSpeedWindow;
-import com.flowfleet.flink.GpsGuard;
 import com.flowfleet.flink.JobConfig;
 import com.flowfleet.flink.KafkaIO;
 import com.flowfleet.flink.Tags;
 import com.flowfleet.flink.Watermarks;
+import com.flowfleet.flink.ingest.LocationSource;
 import java.time.Duration;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
@@ -36,19 +36,7 @@ public final class DriverSpeedJob {
     }
 
     public static void build(StreamExecutionEnvironment env, JobConfig cfg) {
-        SingleOutputStreamOperator<DriverLocation> valid = env
-                .fromSource(
-                        KafkaIO.avroSource(cfg, Topics.DRIVER_LOCATIONS, cfg.groupId(NAME), DriverLocation.class),
-                        Watermarks.forDriverLocation(),
-                        "driver.locations")
-                .process(new GpsGuard())
-                .name("gps-guard");
-
-        valid.getSideOutput(Tags.DLQ_LOCATIONS)
-                .sinkTo(KafkaIO.stringSink(cfg, Topics.DRIVER_LOCATIONS_DLQ))
-                .name("dlq");
-
-        SingleOutputStreamOperator<DriverSpeedWindow> windows = valid
+        SingleOutputStreamOperator<DriverSpeedWindow> windows = LocationSource.ingest(env, cfg, NAME)
                 .keyBy(DriverLocation::getDriverId)
                 .window(TumblingEventTimeWindows.of(WINDOW))
                 .sideOutputLateData(Tags.LATE_LOCATIONS)

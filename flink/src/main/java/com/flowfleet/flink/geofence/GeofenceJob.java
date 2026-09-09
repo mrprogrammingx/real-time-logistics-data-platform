@@ -5,10 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.flowfleet.events.Topics;
 import com.flowfleet.events.avro.DriverLocation;
 import com.flowfleet.events.avro.GeofenceEvent;
-import com.flowfleet.flink.GpsGuard;
 import com.flowfleet.flink.JobConfig;
 import com.flowfleet.flink.KafkaIO;
-import com.flowfleet.flink.Watermarks;
+import com.flowfleet.flink.ingest.LocationSource;
 import com.flowfleet.flink.geo.Geofence;
 import java.io.IOException;
 import java.io.InputStream;
@@ -41,13 +40,7 @@ public final class GeofenceJob {
     public static void build(StreamExecutionEnvironment env, JobConfig cfg, List<Geofence> fences) {
         BroadcastStream<Geofence> geofences = env.fromData(fences).broadcast(GeofenceFunction.FENCES);
 
-        DataStream<DriverLocation> locations = env
-                .fromSource(
-                        KafkaIO.avroSource(cfg, Topics.DRIVER_LOCATIONS, cfg.groupId(NAME), DriverLocation.class),
-                        Watermarks.forDriverLocation(),
-                        "driver.locations")
-                .process(new GpsGuard())
-                .name("gps-guard");
+        DataStream<DriverLocation> locations = LocationSource.ingest(env, cfg, NAME);
 
         locations.keyBy(DriverLocation::getDriverId)
                 .connect(geofences)
