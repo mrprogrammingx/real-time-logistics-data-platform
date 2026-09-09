@@ -1,0 +1,15 @@
+{
+  "type": "record",
+  "name": "DeliveryAlert",
+  "namespace": "com.flowfleet.events.avro",
+  "doc": "An actionable anomaly detected by Flink timers / rules (Phase 4): pickup timeout, GPS gap, impossible speed.",
+  "fields": [
+    { "name": "eventId", "type": "string" },
+    { "name": "kind", "type": { "type": "enum", "name": "AlertKind",
+        "symbols": ["ORDER_PICKUP_TIMEOUT", "GPS_GAP", "IMPOSSIBLE_SPEED", "GEOFENCE_MISSED"] } },
+    { "name": "orderId", "type": ["null", "long"], "default": null },
+    { "name": "driverId", "type": ["null", "long"], "default": null },
+    { "name": "detail", "type": "string" },
+    { "name": "eventTime", "type": { "type": "long", "logicalType": "timestamp-millis" } }
+  ]
+}

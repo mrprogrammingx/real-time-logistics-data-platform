@@ -1,0 +1,34 @@
+{
+  "type": "record",
+  "name": "DriverLocation",
+  "namespace": "com.flowfleet.events.avro",
+  "doc": "A single GPS sample from a driver's device. Highest-volume event on the platform. Schema v2 (v1 had no speed/heading).",
+  "fields": [
+    { "name": "driverId", "type": "long", "doc": "Device owner." },
+    { "name": "latitude", "type": "double", "doc": "WGS-84 latitude." },
+    { "name": "longitude", "type": "double", "doc": "WGS-84 longitude." },
+    {
+      "name": "eventTime",
+      "type": { "type": "long", "logicalType": "timestamp-millis" },
+      "doc": "Device timestamp. Event-time basis for Flink watermarks."
+    },
+    {
+      "name": "speedKph",
+      "type": ["null", "double"],
+      "default": null,
+      "doc": "Ground speed if the device reported it. Added in v2 (nullable + default => BACKWARD/FORWARD compatible)."
+    },
+    {
+      "name": "headingDegrees",
+      "type": ["null", "int"],
+      "default": null,
+      "doc": "Compass heading 0-359 if reported. Added in v2."
+    },
+    {
+      "name": "vehicleType",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "BICYCLE|SCOOTER|MOTORCYCLE|CAR|VAN. Added in v2."
+    }
+  ]
+}

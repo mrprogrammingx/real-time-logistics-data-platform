@@ -57,8 +57,8 @@ and a set of interview questions it lets you answer from experience.
 | Phase | Scope | State |
 |------:|-------|-------|
 | **1** | Java 21 domain model, PostgreSQL/PostGIS schema, Spring Boot operational API | ✅ **done** |
-| 2 | Kafka topic design, Java producers/consumers, rebalancing experiments | ⬜ next |
-| 3 | Debezium CDC from PostgreSQL, snapshot vs streaming, connector recovery | ⬜ |
+| **2** | Kafka topic design, Avro + Schema Registry, location simulator, consumer-group rebalancing | ✅ **done** |
+| 3 | Debezium CDC from PostgreSQL, snapshot vs streaming, connector recovery | ⬜ next |
 | 4 | Flink jobs: driver state, watermarks/windows, timers, geofencing | ⬜ |
 | 5 | Production sinks: Timescale/ClickHouse/BigQuery, idempotency, DLQ | ⬜ |
 | 6 | Failure engineering: kill TaskManager, slow sink, malformed & duplicate events | ⬜ |
@@ -70,12 +70,29 @@ Phase details and per-phase interview questions live in [`docs/`](docs/) and
 
 ---
 
-## Phase 1 — what's here now
+## Phase 2 — what's here now
+
+* **`services/events`** — Avro schemas (`schemas/*.avsc` → generated `SpecificRecord`s),
+  the [`Topics`](services/events/src/main/java/com/flowfleet/events/Topics.java) catalogue,
+  and an `AdminClient`-based `TopicAdmin`. Shared by producers, consumers and (later) Flink.
+* **`services/location-generator`** — simulates a fleet of drivers moving restaurant →
+  customer on a haversine sphere and produces Avro `DriverLocation` events to
+  `flowfleet.driver.locations` (`acks=all`, idempotent, keyed by `driver_id`). Deterministic
+  per seed. Throughput = `GENERATOR_DRIVERS` / `GENERATOR_TICK`.
+* **`services/location-consumer`** — a hand-rolled poll loop (manual commit,
+  `CooperativeStickyAssignor`, a `ConsumerRebalanceListener` that logs partition moves).
+  Scale it to see a rebalance.
+* **compose** adds `kafka` (KRaft), `schema-registry` (compat = `FULL`) and `kafka-ui`.
+* **Schema evolution:** `DriverLocation` v1 → v2 adds `speedKph` / `headingDegrees` /
+  `vehicleType` as nullable-with-default ⇒ FULL-compatible, proven by a pure-Avro test.
+* Tests: schema-compat unit test, deterministic simulator tests, and a **Redpanda**
+  Testcontainers IT doing a real Avro → Schema Registry → Kafka → deserialize round trip.
+
+<details><summary>Phase 1 — operational API (still here)</summary>
 
 * **`services/common`** — framework-free domain model (`record`s + `enum`s): `Order`,
   `Driver`, `Delivery`, `DriverLocation`, `Geofence`, `DriverShift`, `GeoPoint`, plus the
-  `OrderStatus` / `DeliveryStatus` state machines. Reused later by the services *and* the
-  Flink jobs.
+  `OrderStatus` / `DeliveryStatus` state machines.
 * **`services/api`** — Spring Boot 3.4 / Java 21 operational API on PostgreSQL:
   * `POST /api/v1/orders`, `GET /api/v1/orders/{id}`, `GET /api/v1/orders?status=`,
     `PATCH /api/v1/orders/{id}/status`
@@ -88,33 +105,48 @@ Phase details and per-phase interview questions live in [`docs/`](docs/) and
 * Tests: JUnit 5 unit tests for the domain, **Testcontainers** integration tests that run
   the real Flyway migrations against a real PostGIS container.
 
+</details>
+
 ### Run it
 
 ```bash
 # prerequisites: JDK 21, Docker. (Homebrew: brew install openjdk@21 maven)
 
-make verify        # full build + unit + Testcontainers integration tests
-make up            # start Postgres + API + Adminer via docker compose
-make smoke         # create a driver + order, walk it to DELIVERED (needs jq)
-make down          # stop (keep data)   |   make clean-data  (drop the volume)
+make verify        # full build + unit + Testcontainers/Redpanda integration tests
+make up            # start the whole stack (Postgres, API, Kafka, Schema Registry, generator, consumer)
+make smoke         # API: create a driver + order, walk it to DELIVERED (needs jq)
+make schemas       # show the registered DriverLocation schema
+make lag           # consumer-group lag
+make rebalance-demo  # scale consumers to 3, kill one, print the partition reassignment
+make down          # stop (keep data)   |   make clean-data  (drop volumes)
 ```
 
-* API — http://localhost:18080
-* Swagger UI — http://localhost:18080/swagger-ui.html
-* Health — http://localhost:18080/actuator/health
-* Adminer — http://localhost:18081 (`server=postgres db=flowfleet user=flowfleet pass=flowfleet`)
-* Postgres — `localhost:15432` (`db=flowfleet user=flowfleet pass=flowfleet`)
+The first `make up` builds three service images from source (each runs Maven), ~3–5 min,
+and the full stack is ~8 containers — give Docker a couple of GB of headroom.
 
-> Host ports (`15432` / `18080` / `18081`) are non-standard on purpose so the stack
-> co-exists with other local databases/apps. Change them in `docker-compose.yml`.
+| Service | URL / address |
+|---|---|
+| API + Swagger | http://localhost:18080 · `/swagger-ui.html` |
+| Adminer | http://localhost:18081 (`server=postgres db/user/pass=flowfleet`) |
+| Kafka UI | http://localhost:18082 |
+| Schema Registry | http://localhost:18085/subjects |
+| Generator metrics | http://localhost:18090/actuator/prometheus |
+| Kafka (host) | `localhost:19092` · Postgres `localhost:15432` |
 
-### Example
+> Host ports are non-standard on purpose so the stack co-exists with other local
+> databases/apps. Change them in `docker-compose.yml`.
+
+### Examples
 
 ```bash
+# API
 curl -s localhost:18080/api/v1/orders -H 'content-type: application/json' -d '{
   "customerId": 1, "restaurantId": 1,
   "items": [{"name":"Lahmajoun","quantity":3,"unitPrice":1.50}]
 }' | jq
+
+# watch the location stream
+make kafka-tail
 ```
 
 ---
@@ -125,18 +157,22 @@ curl -s localhost:18080/api/v1/orders -H 'content-type: application/json' -d '{
 .
 ├── pom.xml                     Maven reactor (Java 21)
 ├── Makefile                    developer entrypoints
-├── docker-compose.yml          Phase 1 local stack
+├── docker-compose.yml          local stack (Phases 1–2)
+├── schemas/                    canonical Avro .avsc files
 ├── architecture/               design docs (Kafka, Flink, CDC, idempotency, recovery)
-├── docs/                       phase plans + interview questions
+├── docs/                       phase roadmap + interview questions
 ├── database/                   database notes (schema is Flyway-managed in services/api)
-├── scripts/                    smoke.sh and friends
+├── scripts/                    smoke.sh, kafka-topics.sh, schema-registry.sh, rebalance-demo.sh
 └── services/
     ├── common/                 domain model (no framework deps)
-    └── api/                    Spring Boot operational API + Flyway migrations
+    ├── events/                 Avro-generated events + Kafka topic catalogue
+    ├── api/                    Spring Boot operational API + Flyway migrations
+    ├── location-generator/     driver GPS simulator → Kafka
+    └── location-consumer/      consumer-group member (rebalance experiment)
 ```
 
-Later phases add `flink/`, `schemas/` (Avro), `kafka-connect/`, `helm/`, `argocd/`,
-`monitoring/`, and `load-testing/`.
+Later phases add `flink/`, `kafka-connect/`, `helm/`, `argocd/`, `monitoring/`, and
+`load-testing/`.
 
 ---
 
@@ -147,8 +183,9 @@ Later phases add `flink/`, `schemas/` (Avro), `kafka-connect/`, `helm/`, `argocd
 | Language | Java 21 |
 | Build | Maven (multi-module, `./mvnw`) |
 | API | Spring Boot 3.4, Spring Data JDBC, Flyway |
-| DB | PostgreSQL 16 + PostGIS 3.4 |
-| Tests | JUnit 5, AssertJ, Mockito, Testcontainers |
+| Streaming | Apache Kafka 3.8 (KRaft), Confluent Schema Registry, Avro 1.12 |
+| DB | PostgreSQL 16 + PostGIS 3.5 (`imresamu/postgis`, multi-arch) |
+| Tests | JUnit 5, AssertJ, Mockito, Testcontainers (PostGIS + Redpanda) |
 | Containers | Docker / Docker Compose |
 
 > **Note on Docker API version:** Docker Engine 29+ requires API ≥ 1.44. The Testcontainers

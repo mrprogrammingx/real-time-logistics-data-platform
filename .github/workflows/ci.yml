@@ -36,7 +36,10 @@ jobs:
   docker:
     runs-on: ubuntu-latest
     needs: build
+    strategy:
+      matrix:
+        service: [api, location-generator, location-consumer]
     steps:
       - uses: actions/checkout@v4
-      - name: Build the API image (no push)
-        run: docker build -f services/api/Dockerfile -t flowfleet/api:ci .
+      - name: Build the ${{ matrix.service }} image (no push)
+        run: docker build -f services/${{ matrix.service }}/Dockerfile -t flowfleet/${{ matrix.service }}:ci .

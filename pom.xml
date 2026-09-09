@@ -13,7 +13,10 @@
 
     <modules>
         <module>services/common</module>
+        <module>services/events</module>
         <module>services/api</module>
+        <module>services/location-generator</module>
+        <module>services/location-consumer</module>
     </modules>
 
     <properties>
@@ -24,12 +27,27 @@
         <!-- Managed dependency versions -->
         <spring-boot.version>3.4.1</spring-boot.version>
         <testcontainers.version>1.21.3</testcontainers.version>
+        <avro.version>1.12.0</avro.version>
+        <kafka.version>3.8.1</kafka.version>
+        <!-- Confluent Platform: kafka-avro-serializer + schema-registry-client.
+             Keep the minor aligned with the cp-* images in docker-compose.yml. -->
+        <confluent.version>7.8.0</confluent.version>
 
         <!-- Plugin versions -->
         <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
         <maven-surefire-plugin.version>3.5.2</maven-surefire-plugin.version>
         <maven-failsafe-plugin.version>3.5.2</maven-failsafe-plugin.version>
+        <avro-maven-plugin.version>1.12.0</avro-maven-plugin.version>
     </properties>
+
+    <repositories>
+        <repository>
+            <id>confluent</id>
+            <url>https://packages.confluent.io/maven/</url>
+            <releases><enabled>true</enabled></releases>
+            <snapshots><enabled>false</enabled></snapshots>
+        </repository>
+    </repositories>
 
     <dependencyManagement>
         <dependencies>
@@ -53,6 +71,32 @@
                 <groupId>com.flowfleet</groupId>
                 <artifactId>flowfleet-common</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.flowfleet</groupId>
+                <artifactId>flowfleet-events</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.apache.avro</groupId>
+                <artifactId>avro</artifactId>
+                <version>${avro.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kafka</groupId>
+                <artifactId>kafka-clients</artifactId>
+                <version>${kafka.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.confluent</groupId>
+                <artifactId>kafka-avro-serializer</artifactId>
+                <version>${confluent.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.confluent</groupId>
+                <artifactId>kafka-schema-registry-client</artifactId>
+                <version>${confluent.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -78,6 +122,11 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-failsafe-plugin</artifactId>
                     <version>${maven-failsafe-plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.avro</groupId>
+                    <artifactId>avro-maven-plugin</artifactId>
+                    <version>${avro-maven-plugin.version}</version>
                 </plugin>
             </plugins>
         </pluginManagement>

@@ -1,0 +1,17 @@
+{
+  "type": "record",
+  "name": "DeliveryEvent",
+  "namespace": "com.flowfleet.events.avro",
+  "doc": "A business-level delivery lifecycle event, reconstructed by the Flink delivery-analytics job from CDC + geofence streams (Phase 4).",
+  "fields": [
+    { "name": "eventId", "type": "string", "doc": "Deterministic idempotency key." },
+    { "name": "orderId", "type": "long" },
+    { "name": "deliveryId", "type": ["null", "long"], "default": null },
+    { "name": "driverId", "type": ["null", "long"], "default": null },
+    { "name": "type", "type": { "type": "enum", "name": "DeliveryEventType",
+        "symbols": ["DRIVER_ASSIGNED", "EN_ROUTE_TO_PICKUP", "AT_PICKUP", "PICKED_UP",
+                    "EN_ROUTE_TO_CUSTOMER", "AT_CUSTOMER", "DELIVERED", "FAILED", "CANCELLED"] } },
+    { "name": "eventTime", "type": { "type": "long", "logicalType": "timestamp-millis" } },
+    { "name": "ingestTime", "type": { "type": "long", "logicalType": "timestamp-millis" } }
+  ]
+}

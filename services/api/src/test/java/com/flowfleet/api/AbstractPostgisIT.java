@@ -1,5 +1,6 @@
 package com.flowfleet.api;
 
+import java.time.Duration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -22,14 +23,19 @@ import org.testcontainers.utility.DockerImageName;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 public abstract class AbstractPostgisIT {
 
+    // imresamu/postgis is a multi-arch rebuild of the official postgis image; unlike
+    // postgis/postgis it publishes arm64, so it runs natively on Apple Silicon.
     static final DockerImageName POSTGIS_IMAGE =
-            DockerImageName.parse("postgis/postgis:16-3.4").asCompatibleSubstituteFor("postgres");
+            DockerImageName.parse("imresamu/postgis:16-3.5").asCompatibleSubstituteFor("postgres");
 
     @ServiceConnection
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(POSTGIS_IMAGE)
             .withDatabaseName("flowfleet")
             .withUsername("flowfleet")
-            .withPassword("flowfleet");
+            .withPassword("flowfleet")
+            // postgis/postgis is amd64-only; on an Apple-Silicon host it runs emulated and
+            // first-boot can exceed the 60s default, especially on a busy machine.
+            .withStartupTimeout(Duration.ofMinutes(3));
 
     static {
         POSTGRES.start();

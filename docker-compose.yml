@@ -1,18 +1,23 @@
 # ============================================================================
-# FlowFleet — Phase 1 local stack.
+# FlowFleet — local stack (Phases 1–2).
 #
-#   postgres  : PostGIS-enabled operational database (source of truth)
-#   api       : Spring Boot service, runs Flyway migrations on startup
-#   adminer   : lightweight DB UI at http://localhost:8081
+#   postgres           : PostGIS operational database (source of truth)
+#   api                : Spring Boot service, runs Flyway migrations on startup
+#   adminer            : DB UI                     http://localhost:18081
+#   kafka              : single-node KRaft broker  localhost:19092 (host)
+#   schema-registry    : Confluent Schema Registry http://localhost:18085
+#   kafka-ui           : topics / groups / lag UI  http://localhost:18082
+#   location-generator : simulated fleet -> flowfleet.driver.locations
+#   location-consumer  : consumer-group member (scale with --scale)
 #
-# Kafka, Debezium, Flink, ClickHouse, etc. arrive in later phases and will be
-# layered in via additional compose files (docker-compose.kafka.yml, ...).
+# Debezium, Flink, ClickHouse, etc. arrive in later phases.
 # ============================================================================
 name: flowfleet
 
 services:
   postgres:
-    image: postgis/postgis:16-3.4
+    # Multi-arch rebuild of postgis/postgis (which is amd64-only) — runs native on arm64.
+    image: imresamu/postgis:16-3.5
     container_name: flowfleet-postgres
     environment:
       POSTGRES_DB: flowfleet
@@ -69,6 +74,107 @@ services:
       - "18081:8080"
     environment:
       ADMINER_DEFAULT_SERVER: postgres
+
+  # --------------------------------------------------------------------------
+  # Kafka (KRaft, single combined broker+controller node)
+  #   internal clients : kafka:29092
+  #   host clients     : localhost:19092
+  # --------------------------------------------------------------------------
+  kafka:
+    image: confluentinc/cp-kafka:7.8.0
+    container_name: flowfleet-kafka
+    ports:
+      - "19092:19092"
+    environment:
+      CLUSTER_ID: flowfleet-kraft-0000000000
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_LISTENERS: PLAINTEXT://kafka:29092,CONTROLLER://kafka:29093,EXTERNAL://0.0.0.0:19092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,EXTERNAL://localhost:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server kafka:29092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.8.0
+    container_name: flowfleet-schema-registry
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "18085:8085"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:29092
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8085
+      SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY_LEVEL: full
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8085/subjects >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: flowfleet-kafka-ui
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "18082:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: flowfleet
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8085
+      DYNAMIC_CONFIG_ENABLED: "true"
+
+  location-generator:
+    build:
+      context: .
+      dockerfile: services/location-generator/Dockerfile
+    image: flowfleet/location-generator:0.1.0
+    container_name: flowfleet-location-generator
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP: kafka:29092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8085
+      GENERATOR_DRIVERS: "200"
+      GENERATOR_SPEEDUP: "1.0"
+      SERVER_PORT: "8090"
+    ports:
+      - "18090:8090"
+
+  location-consumer:
+    build:
+      context: .
+      dockerfile: services/location-consumer/Dockerfile
+    image: flowfleet/location-consumer:0.1.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP: kafka:29092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8085
+      SERVER_PORT: "8091"
+    # No container_name / fixed port so you can scale it:
+    #   docker compose up -d --scale location-consumer=3
 
 volumes:
   pgdata:
