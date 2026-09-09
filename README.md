@@ -60,7 +60,7 @@ and a set of interview questions it lets you answer from experience.
 | **2** | Kafka topic design, Avro + Schema Registry, location simulator, consumer-group rebalancing | ✅ **done** |
 | **3** | Debezium CDC from PostgreSQL — snapshot vs streaming, before/after, tombstones, slot & connector recovery | ✅ **done** |
 | **4** | Flink jobs — keyed driver state, event-time windows, timers, geofencing (broadcast + JTS) | ✅ **done** |
-| 5 | Production sinks: Timescale/ClickHouse/BigQuery, idempotency, DLQ | ⬜ next |
+| **5** | Flink sinks → TimescaleDB + ClickHouse — batching, retries, idempotent writes | ✅ **done** |
 | 6 | Failure engineering: kill TaskManager, slow sink, malformed & duplicate events | ⬜ |
 | 7 | Kubernetes, Flink K8s Operator, Helm, ArgoCD, Prometheus/Grafana | ⬜ |
 | 8 | Load testing 1k→50k events/s, tuning, autoscaling | ⬜ |
@@ -70,7 +70,26 @@ Phase details and per-phase interview questions live in [`docs/`](docs/) and
 
 ---
 
-## Phase 4 — what's here now
+## Phase 5 — what's here now
+
+Flink **sink jobs** move the derived streams into the read stores, with the batching /
+retry / idempotency a real sink needs. Both write mechanisms are proven replay-safe by a
+Testcontainers IT (write a batch → replay the identical batch → one logical row survives).
+
+| Job | From → To | Idempotency |
+|-----|-----------|-------------|
+| [`TimescaleSinkJob`](flink/src/main/java/com/flowfleet/flink/sink/TimescaleSinkJob.java) | `driver.state` + `driver.speed-windows` → TimescaleDB hypertables | PK includes the event's own timestamp; `INSERT … ON CONFLICT DO NOTHING` |
+| [`ClickHouseSinkJob`](flink/src/main/java/com/flowfleet/flink/sink/ClickHouseSinkJob.java) | `driver.geofence-events` + `delivery.alerts` → ClickHouse | `ReplacingMergeTree(event_id)` collapses re-inserts at merge time |
+
+`JdbcSinks` — `JdbcExecutionOptions` (flush at 500 rows or 1 s), 1 connection per subtask,
+3 retries per batch. compose gains **`timescaledb`** (:15433) and **`clickhouse`** (:18123);
+`make flink-submit-sinks`, `make timescale-peek`, `make clickhouse-peek`. Walkthrough in
+[`docs/experiments/phase-5-idempotent-sinks.md`](docs/experiments/phase-5-idempotent-sinks.md).
+
+Why two databases (OLTP vs OLAP), and BigQuery deferred: see
+[`docs/interview-questions/phase-5.md`](docs/interview-questions/phase-5.md).
+
+<details><summary>Phase 4 — Flink stateful processing (still here)</summary>
 
 **`flink/`** — one module (Java 17 / Flink 1.20), one fat jar, one entry class per job.
 Every stateful function has a Flink test-harness or MiniCluster test (no Kafka needed).
@@ -84,8 +103,10 @@ Every stateful function has a Flink test-harness or MiniCluster test (no Kafka n
 | `GpsGuard` (in every job) | `ProcessFunction` side output — bad samples → `flowfleet.driver.locations.dlq` |
 
 compose gains a **Flink session cluster** (`flink-jobmanager` + `flink-taskmanager`, UI on
-:18086); `make flink-submit-all` deploys all four jobs. Experiment walkthrough in
+:18086); `make flink-submit-all` deploys the jobs. Experiment walkthrough in
 [`docs/experiments/phase-4-watermarks-windows.md`](docs/experiments/phase-4-watermarks-windows.md).
+
+</details>
 
 <details><summary>Phase 3 — Debezium CDC (still here)</summary>
 
@@ -151,13 +172,14 @@ make lag           # consumer-group lag
 make rebalance-demo  # scale consumers to 3, kill one, print the partition reassignment
 make cdc-register  # register the Debezium PostgreSQL source connector
 make cdc-demo      # change an order via the API, watch the CDC event land
-make flink-submit-all  # deploy the four Flink jobs to the session cluster
-make flink-tail    # watch enriched driver.state snapshots
+make flink-submit-all  # deploy all six Flink jobs (4 processing + 2 sink)
+make timescale-peek    # row counts + latest driver positions in TimescaleDB
+make clickhouse-peek   # deduplicated counts in ClickHouse
 make down          # stop (keep data)   |   make clean-data  (drop volumes)
 ```
 
 The first `make up` builds five images from source (each runs Maven) and the full stack is
-~12 containers — give Docker a few GB of headroom.
+~14 containers — give Docker a few GB of headroom.
 
 | Service | URL / address |
 |---|---|
@@ -167,8 +189,8 @@ The first `make up` builds five images from source (each runs Maven) and the ful
 | Kafka Connect | http://localhost:18083/connectors |
 | Schema Registry | http://localhost:18085/subjects |
 | Flink UI | http://localhost:18086 |
-| Generator metrics | http://localhost:18090/actuator/prometheus |
-| Kafka (host) | `localhost:19092` · Postgres `localhost:15432` |
+| ClickHouse | http://localhost:18123 · `/play` |
+| Kafka (host) | `localhost:19092` · Postgres `localhost:15432` · TimescaleDB `localhost:15433` |
 
 > Host ports are non-standard on purpose so the stack co-exists with other local
 > databases/apps. Change them in `docker-compose.yml`.
@@ -194,7 +216,7 @@ make kafka-tail
 .
 ├── pom.xml                     Maven reactor
 ├── Makefile                    developer entrypoints
-├── docker-compose.yml          local stack (Phases 1–4)
+├── docker-compose.yml          local stack (Phases 1–5)
 ├── schemas/                    canonical Avro .avsc files
 ├── kafka-connect/              Debezium connector config + notes
 ├── architecture/               design docs (Kafka, Flink, CDC, idempotency, recovery)

@@ -1,6 +1,9 @@
 # Idempotency & delivery guarantees
 
-> Status: **design** (implemented in Phase 5–6).
+> Status: **implemented** (Phase 5) for the TimescaleDB + ClickHouse sinks
+> (`flink/src/main/java/com/flowfleet/flink/sink/`). `TimescaleSinkIT` and
+> `ClickHouseSinkIT` replay an identical batch and assert one logical row survives.
+> Exactly-once via Kafka transactions, and BigQuery, remain design.
 
 ## Posture
 

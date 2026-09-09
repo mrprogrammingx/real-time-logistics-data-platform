@@ -114,8 +114,16 @@ cdc-demo: ## Change an order via the API and watch the CDC event land
 ## ----- flink ------------------------------------------------------------------
 
 .PHONY: flink-submit-all
-flink-submit-all: ## Submit all four Flink jobs to the session cluster
+flink-submit-all: ## Submit all six Flink jobs (4 processing + 2 sink) to the session cluster
 	./scripts/flink.sh submit-all
+
+.PHONY: flink-submit-jobs
+flink-submit-jobs: ## Submit only the processing jobs (driver-state/speed/geofence/anomaly)
+	./scripts/flink.sh submit-jobs
+
+.PHONY: flink-submit-sinks
+flink-submit-sinks: ## Submit only the sink jobs (timescale + clickhouse)
+	./scripts/flink.sh submit-sinks
 
 .PHONY: flink-list
 flink-list: ## List running Flink jobs
@@ -130,6 +138,27 @@ flink-tail: ## Print driver.state snapshots as JSON (Ctrl-C to stop)
 	$(COMPOSE) exec schema-registry kafka-avro-console-consumer \
 		--bootstrap-server kafka:29092 --property schema.registry.url=http://localhost:8085 \
 		--topic flowfleet.driver.state --property print.key=true
+
+## ----- sinks ----------------------------------------------------------------
+
+.PHONY: timescale-psql
+timescale-psql: ## psql shell into TimescaleDB
+	$(COMPOSE) exec timescaledb psql -U flowfleet -d flowfleet
+
+.PHONY: timescale-peek
+timescale-peek: ## Row counts + latest driver positions in TimescaleDB
+	$(COMPOSE) exec timescaledb psql -U flowfleet -d flowfleet -c \
+	  "SELECT 'driver_state' t, count(*) FROM driver_state UNION ALL SELECT 'speed_windows', count(*) FROM driver_speed_windows;" \
+	  -c "SELECT driver_id, event_time, round(derived_speed_kph::numeric,1) kph FROM driver_current_state ORDER BY driver_id LIMIT 10;"
+
+.PHONY: clickhouse-client
+clickhouse-client: ## clickhouse-client shell
+	$(COMPOSE) exec clickhouse clickhouse-client -u flowfleet --password flowfleet -d flowfleet
+
+.PHONY: clickhouse-peek
+clickhouse-peek: ## Deduplicated row counts in ClickHouse
+	$(COMPOSE) exec clickhouse clickhouse-client -u flowfleet --password flowfleet -q \
+	  "SELECT 'geofence_events' t, count() c FROM flowfleet.geofence_events FINAL UNION ALL SELECT 'delivery_alerts', count() FROM flowfleet.delivery_alerts FINAL"
 
 ## ----- demo ---------------------------------------------------------------
 

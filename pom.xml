@@ -41,7 +41,9 @@
              flowfleet-events, which it consumes) compile to Java 17 bytecode. -->
         <flink.version>1.20.1</flink.version>
         <flink.kafka.connector.version>3.3.0-1.20</flink.kafka.connector.version>
+        <flink.jdbc.connector.version>3.3.0-1.20</flink.jdbc.connector.version>
         <jts.version>1.20.0</jts.version>
+        <clickhouse-jdbc.version>0.7.2</clickhouse-jdbc.version>
 
         <!-- Plugin versions -->
         <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
@@ -142,6 +144,17 @@
                 <groupId>org.apache.flink</groupId>
                 <artifactId>flink-connector-kafka</artifactId>
                 <version>${flink.kafka.connector.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-connector-jdbc</artifactId>
+                <version>${flink.jdbc.connector.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.clickhouse</groupId>
+                <artifactId>clickhouse-jdbc</artifactId>
+                <version>${clickhouse-jdbc.version}</version>
+                <classifier>all</classifier>
             </dependency>
             <dependency>
                 <groupId>org.apache.flink</groupId>
