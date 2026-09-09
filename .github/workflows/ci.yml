@@ -38,7 +38,7 @@ jobs:
     needs: build
     strategy:
       matrix:
-        service: [api, location-generator, location-consumer]
+        service: [api, location-generator, location-consumer, connect]
     steps:
       - uses: actions/checkout@v4
       - name: Build the ${{ matrix.service }} image (no push)

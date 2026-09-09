@@ -15,6 +15,7 @@
         <module>services/common</module>
         <module>services/events</module>
         <module>services/api</module>
+        <module>services/cdc</module>
         <module>services/location-generator</module>
         <module>services/location-consumer</module>
     </modules>
@@ -32,6 +33,9 @@
         <!-- Confluent Platform: kafka-avro-serializer + schema-registry-client.
              Keep the minor aligned with the cp-* images in docker-compose.yml. -->
         <confluent.version>7.8.0</confluent.version>
+        <!-- Debezium: keep the connector plugin (services/connect/Dockerfile) on the same
+             version, and both aligned with Kafka 3.8 (Debezium 3.0.x targets Kafka 3.8). -->
+        <debezium.version>3.0.8.Final</debezium.version>
 
         <!-- Plugin versions -->
         <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
@@ -97,6 +101,14 @@
                 <groupId>io.confluent</groupId>
                 <artifactId>kafka-schema-registry-client</artifactId>
                 <version>${confluent.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>io.debezium</groupId>
+                <artifactId>debezium-bom</artifactId>
+                <version>${debezium.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
             </dependency>
         </dependencies>
     </dependencyManagement>

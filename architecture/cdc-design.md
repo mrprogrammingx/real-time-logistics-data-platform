@@ -1,6 +1,12 @@
 # CDC design (Debezium → Kafka)
 
-> Status: **design** (implemented in Phase 3).
+> Status: **implemented** (Phase 3).
+> - Production path: `services/connect/Dockerfile` (Kafka Connect + Debezium PG connector),
+>   `kafka-connect/postgres-source.json`, `scripts/connect.sh` / `make cdc-*`.
+> - Test path: `services/cdc` runs the same connector via the Debezium **embedded engine**
+>   against a PostgreSQL Testcontainer (`PostgresCdcIT`) — proves snapshot → streaming,
+>   `op` c/r/u/d, before/after images and tombstones without a Connect cluster.
+> - `V3__cdc_replica_identity.sql` sets `REPLICA IDENTITY FULL` on the captured tables.
 
 ## Why CDC instead of dual-writes
 
@@ -54,6 +60,19 @@ Debezium then needs:
   (`key`, `value: null`) so log-compacted topics can drop the key.
 * Consumers must handle `before`/`after` both being partially populated depending on
   `REPLICA IDENTITY`.
+
+## Topics & routing
+
+Debezium's default topic is `<topic.prefix>.<schema>.<table>` = `flowfleet.public.orders`.
+A `RegexRouter` SMT rewrites that to the catalogue name:
+
+```
+"transforms.route.regex":       "flowfleet\\.public\\.(.*)"
+"transforms.route.replacement": "flowfleet.$1.cdc"        ->  flowfleet.orders.cdc
+```
+
+Value + key are **Avro** via the Confluent `AvroConverter`; Debezium registers the envelope
+and key schemas in Schema Registry (subjects `flowfleet.orders.cdc-value` / `-key`).
 
 ## Ordering & keys
 

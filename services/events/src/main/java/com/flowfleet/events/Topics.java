@@ -28,11 +28,16 @@ public final class Topics {
     public static final String DELIVERY_ALERTS = "flowfleet.delivery.alerts";
     public static final String DRIVER_LOCATIONS_DLQ = "flowfleet.driver.locations.dlq";
 
-    // --- produced by Debezium (Phase 3) — names reserved here for a single source of truth
+    // --- produced by Debezium (Phase 3): flowfleet.public.<table> routed to flowfleet.<table>.cdc
     public static final String ORDERS_CDC = "flowfleet.orders.cdc";
+    public static final String ORDER_ITEMS_CDC = "flowfleet.order_items.cdc";
     public static final String DRIVERS_CDC = "flowfleet.drivers.cdc";
     public static final String DELIVERIES_CDC = "flowfleet.deliveries.cdc";
-    public static final String SHIFTS_CDC = "flowfleet.shifts.cdc";
+    public static final String DRIVER_SHIFTS_CDC = "flowfleet.driver_shifts.cdc";
+
+    public static List<String> cdcTopics() {
+        return List.of(ORDERS_CDC, ORDER_ITEMS_CDC, DRIVERS_CDC, DELIVERIES_CDC, DRIVER_SHIFTS_CDC);
+    }
 
     /** Consumer group id for the Phase 2 rebalance experiment. */
     public static final String LOCATION_CONSUMER_GROUP = "flowfleet.location-consumer";

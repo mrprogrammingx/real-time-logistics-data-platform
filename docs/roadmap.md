@@ -16,7 +16,7 @@ ClickHouse          checkpoints              Prometheus/Grafana   autoscaling
 |------:|-------|-----------------|-------|
 | **1 ✅** | Java 21 domain + OLTP | `services/common`, `services/api`, PostGIS schema, docker-compose, Testcontainers | done |
 | **2 ✅** | Kafka | `services/events` (Avro + `Topics` + `TopicAdmin`), `location-generator`, `location-consumer`, Kafka + Schema Registry + Kafka UI in compose, `DriverLocation` v1→v2 evolution, rebalance experiment (`make rebalance-demo`) | done |
-| **3** | Debezium CDC | `wal_level=logical` (already set), publication + slot, `orders/drivers/deliveries/shifts` → `*.cdc`, INSERT/UPDATE/DELETE + tombstone tests, connector-restart recovery | [`cdc-design.md`](../architecture/cdc-design.md) |
+| **3 ✅** | Debezium CDC | `services/cdc` (embedded-engine wrapper + `CdcRecord` + `PostgresCdcIT` proving snapshot/streaming/op c·r·u·d/before·after/tombstone), `services/connect` (Kafka Connect + Debezium PG connector image), `kafka-connect/postgres-source.json`, `V3` REPLICA IDENTITY FULL, `make cdc-*` + recovery experiment | done |
 | **4** | Flink core | `driver-state` (keyed state), watermarks + windows (speed/active drivers), timers (`ORDER_PICKUP_TIMEOUT`), `geofencing` (broadcast + JTS) | [`flink-design.md`](../architecture/flink-design.md) |
 | **5** | Production sinks | TimescaleDB + ClickHouse + BigQuery sinks, batching, connection pools, retries, idempotency keys, DLQ | [`idempotency.md`](../architecture/idempotency.md) |
 | **6** | Failure engineering | kill TaskManager, slow-sink backpressure, malformed→DLQ, duplicate + out-of-order tests, checkpoint recovery — all with metrics | [`failure-recovery.md`](../architecture/failure-recovery.md) |
