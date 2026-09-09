@@ -1,0 +1,38 @@
+# Java / Maven
+target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+dependency-reduced-pom.xml
+.mvn/timing.properties
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs & local state
+*.log
+logs/
+/data/
+pgdata/
+
+# Env
+.env
+.env.local
+*.local.yml
+
+# Flink / build artifacts
+flink/**/target/
+savepoints/
+checkpoints/

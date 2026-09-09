@@ -1,0 +1,14 @@
+# Test profile: datasource is supplied by Testcontainers via @ServiceConnection,
+# so no url/username/password here. Flyway still runs against the throwaway container.
+spring:
+  flyway:
+    enabled: true
+  threads:
+    virtual:
+      enabled: false
+
+logging:
+  level:
+    com.flowfleet: debug
+    org.testcontainers: info
+    org.flywaydb: info

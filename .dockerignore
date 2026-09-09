@@ -1,0 +1,18 @@
+# The API image build only needs pom.xml + services/. Keep the context small.
+**/target/
+**/*.class
+.git/
+.github/
+.idea/
+*.iml
+.mvn/timing.properties
+docs/
+architecture/
+database/
+monitoring/
+load-testing/
+scripts/
+data/
+pgdata/
+*.log
+.DS_Store
