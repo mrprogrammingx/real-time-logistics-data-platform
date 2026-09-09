@@ -1,0 +1,17 @@
+{
+  "type": "record",
+  "name": "GeofenceEvent",
+  "namespace": "com.flowfleet.events.avro",
+  "doc": "A driver entering or leaving a geofenced area. Emitted by the Flink geofencing job (Phase 4).",
+  "fields": [
+    { "name": "eventId", "type": "string", "doc": "Deterministic idempotency key: sha256(driverId|geofenceId|transition|eventTime)." },
+    { "name": "driverId", "type": "long" },
+    { "name": "geofenceId", "type": "long" },
+    { "name": "geofenceName", "type": "string" },
+    { "name": "geofenceType", "type": "string", "doc": "RESTAURANT|CUSTOMER|WAREHOUSE|ZONE" },
+    { "name": "transition", "type": { "type": "enum", "name": "GeofenceTransition", "symbols": ["ENTER", "EXIT"] } },
+    { "name": "latitude", "type": "double" },
+    { "name": "longitude", "type": "double" },
+    { "name": "eventTime", "type": { "type": "long", "logicalType": "timestamp-millis" } }
+  ]
+}

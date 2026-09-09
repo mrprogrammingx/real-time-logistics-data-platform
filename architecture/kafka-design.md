@@ -1,7 +1,10 @@
 # Kafka design
 
-> Status: **design** (implemented in Phase 2). This document is the contract the producers,
-> Debezium, and the Flink jobs are built against.
+> Status: **partially implemented** (Phase 2). `flowfleet.driver.locations` and the
+> `flowfleet.*` event topics exist and are produced to; the `*.cdc` topics arrive with
+> Debezium in Phase 3. This document is the production contract — the numbers below are the
+> target. The dev cluster (`services/events/Topics.java`, `scripts/kafka-topics.sh`) uses
+> smaller counts and RF 1 on a single broker.
 
 ## Topics
 

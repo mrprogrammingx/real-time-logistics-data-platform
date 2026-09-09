@@ -1,0 +1,12 @@
+{
+  "type": "record",
+  "name": "DriverLocation",
+  "namespace": "com.flowfleet.events.avro",
+  "doc": "DriverLocation schema v1 (historical). Kept only for the schema-evolution compatibility test.",
+  "fields": [
+    { "name": "driverId", "type": "long" },
+    { "name": "latitude", "type": "double" },
+    { "name": "longitude", "type": "double" },
+    { "name": "eventTime", "type": { "type": "long", "logicalType": "timestamp-millis" } }
+  ]
+}
