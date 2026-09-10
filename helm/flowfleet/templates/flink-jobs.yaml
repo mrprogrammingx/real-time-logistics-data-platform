@@ -24,11 +24,11 @@ metadata:
   labels:
     {{- include "flowfleet.componentLabels" (list $top "flink") | nindent 4 }}
     flowfleet.io/flink-job: {{ $jobName }}
-  annotations:
-    # Bump to force a redeploy without a spec change (e.g. after a new image).
-    flowfleet.io/restart-nonce: "0"
 spec:
   deploymentName: {{ $sessionName }}
+  # Bump this (per job, in values) to force a redeploy with no spec change —
+  # e.g. after pushing a new image to the same tag.
+  restartNonce: {{ $jobCfg.restartNonce | default 0 }}
   job:
     jarURI: {{ $jarUri }}
     entryClass: {{ $jobCfg.entryClass | required (printf "flink.jobs.%s.entryClass is required" $jobName) }}
