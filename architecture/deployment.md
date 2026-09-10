@@ -78,9 +78,11 @@ with a `job:` block and `jarURI: local:///opt/flink/usrlib/flowfleet-flink-jobs.
 fetch (`http`, `s3`, `hdfs`, …). `local://` resolves on the **operator** pod, not
 our image, so it doesn't work here. The chart ships `flink-artifacts` — an
 init-container copies `flowfleet-flink-jobs.jar` out of the `flowfleet/flink`
-image, a `busybox httpd` serves it, and `jarURI` is
-`http://<release>-flink-artifacts/flowfleet-flink-jobs.jar`. In a real cluster
-this is S3/GCS or a Maven repo; set `flink.jarURI` and the server is skipped.
+image, a `busybox httpd` serves it, and `jarURI` is the **fully-qualified**
+`http://<release>-flink-artifacts.<namespace>.svc.cluster.local/flowfleet-flink-jobs.jar`
+(the operator resolves it on its own pod, in the `flink-operator` namespace — a
+bare service name wouldn't resolve). In a real cluster this is S3/GCS or a Maven
+repo; set `flink.jarURI` and the server is skipped.
 
 ## State, checkpoints, HA
 

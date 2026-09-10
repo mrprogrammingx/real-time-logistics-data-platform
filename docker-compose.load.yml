@@ -1,0 +1,56 @@
+# Load-test overlay for docker-compose.yml (Phase 8).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.load.yml up -d
+#   ( or: make load-up )
+#
+# Then ramp the generator:  scripts/loadtest.sh ramp
+#
+# Widens driver.locations to 24 partitions, gives the generator a 20k-driver pool
+# (so it can hold ~50k ev/s on a 100 ms tick), scales the TaskManager to 3 with
+# 8 slots each, and gives Kafka + the JVMs more headroom.
+services:
+  kafka:
+    environment:
+      KAFKA_HEAP_OPTS: "-Xms1g -Xmx2g"
+      KAFKA_NUM_PARTITIONS: "24"          # only affects auto-created topics; ours are explicit
+    deploy:
+      resources:
+        limits: { cpus: "3", memory: 3g }
+
+  location-generator:
+    environment:
+      GENERATOR_DRIVERS: "20000"
+      GENERATOR_TARGET_RATE: "0"          # start paused; loadtest.sh drives the rate
+      GENERATOR_LOCATIONS_PARTITIONS: "24"
+      JAVA_TOOL_OPTIONS: "-Xmx1g"
+    deploy:
+      resources:
+        limits: { cpus: "2", memory: 1536m }
+
+  flink-jobmanager:
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        state.backend.type: rocksdb
+        state.backend.incremental: true
+        execution.checkpointing.interval: 30s
+        execution.checkpointing.unaligned: true
+        execution.checkpointing.externalized-checkpoint-retention: RETAIN_ON_CANCELLATION
+        restart-strategy.type: exponential-delay
+        taskmanager.memory.managed.fraction: 0.5
+        metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+        metrics.reporter.prom.port: 9250
+
+  flink-taskmanager:
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 8
+        taskmanager.memory.process.size: 4g
+        taskmanager.memory.managed.fraction: 0.5
+        metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+        metrics.reporter.prom.port: 9251
+    deploy:
+      replicas: 3
+      resources:
+        limits: { cpus: "3", memory: 4500m }

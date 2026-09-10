@@ -47,8 +47,14 @@ cmd_operators() {
   kubectl -n cert-manager rollout status deploy/cert-manager-webhook --timeout=180s
 
   echo "==> Flink Kubernetes Operator $FLINK_OPERATOR_VERSION"
-  helm repo add flink-operator "https://downloads.apache.org/flink/flink-kubernetes-operator-${FLINK_OPERATOR_VERSION}/" >/dev/null
-  helm repo update flink-operator >/dev/null
+  # downloads.apache.org only carries the current release; older ones move to archive.
+  local base="https://downloads.apache.org/flink/flink-kubernetes-operator-${FLINK_OPERATOR_VERSION}"
+  helm repo add flink-operator "${base}/" >/dev/null
+  helm repo update flink-operator >/dev/null 2>&1 || {
+    echo "   (not on downloads.apache.org — using archive)"
+    helm repo add flink-operator "https://archive.apache.org/dist/flink/flink-kubernetes-operator-${FLINK_OPERATOR_VERSION}/" >/dev/null
+    helm repo update flink-operator >/dev/null
+  }
   kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
   helm upgrade --install flink-kubernetes-operator flink-operator/flink-kubernetes-operator \
     -n flink-operator --create-namespace \
@@ -58,12 +64,20 @@ cmd_operators() {
 
 cmd_deploy() {
   need helm
+  # Not --wait: the flink-data PVC is WaitForFirstConsumer and is only bound once
+  # the operator creates the JobManager pod, which happens after this returns.
   helm upgrade --install "$RELEASE" "$CHART" \
     -n "$NS" --create-namespace \
-    -f "$CHART/values-kind.yaml" \
-    --wait --timeout 10m
+    -f "$CHART/values-kind.yaml" --timeout 10m
+  echo "==> waiting for the core workloads"
+  for w in "statefulset/$(resource postgres)" "statefulset/$(resource kafka)" \
+           "deploy/$(resource schema-registry)" "statefulset/$(resource timescaledb)" \
+           "statefulset/$(resource clickhouse)" "deploy/$(resource api)" \
+           "deploy/$(resource flink-artifacts)"; do
+    kubectl -n "$NS" rollout status "$w" --timeout=300s || true
+  done
   echo
-  echo "jobs:"; cmd_jobs
+  echo "jobs (may take a minute for the operator to reconcile):"; cmd_jobs
 }
 
 cmd_up() {
@@ -81,7 +95,11 @@ cmd_jobs() {
     echo "(Flink CRDs not installed yet — run: scripts/k8s.sh operators)"
 }
 
-sessionjob() { echo "${RELEASE}-flowfleet-${1}"; }
+# Helm fullname: the release name already contains the chart name "flowfleet", so
+# resources render as <release>-<component> — flowfleet-driver-state,
+# flowfleet-session, flowfleet-session-rest, flowfleet-flink-artifacts.
+resource()   { case "$RELEASE" in *flowfleet*) echo "${RELEASE}-${1}";; *) echo "${RELEASE}-flowfleet-${1}";; esac; }
+sessionjob() { resource "$1"; }
 
 cmd_savepoint() {
   local job="${1:?job name (driver-state|driver-speed|geofence|anomaly|timescale-sink|clickhouse-sink)}"

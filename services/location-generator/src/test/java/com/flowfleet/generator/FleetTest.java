@@ -15,8 +15,8 @@ import org.junit.jupiter.api.Test;
 class FleetTest {
 
     private static GeneratorProperties props(int drivers, long seed) {
-        return new GeneratorProperties(drivers, Duration.ofSeconds(1), 1.0, seed, false, false,
-                Topics.DRIVER_LOCATIONS, "localhost:9092", "http://localhost:8085");
+        return new GeneratorProperties(drivers, Duration.ofSeconds(1), 1.0, 0.0, seed, false, false,
+                Topics.DRIVER_LOCATIONS, 6, "localhost:9092", "http://localhost:8085");
     }
 
     @Test
@@ -32,6 +32,27 @@ class FleetTest {
             assertThat(e.getHeadingDegrees()).isBetween(0, 359);
         });
         assertThat(batch.stream().map(DriverLocation::getDriverId).distinct().count()).isEqualTo(50);
+    }
+
+    @Test
+    void tickWindowStepsExactlyTheRequestedRotatingWindow() {
+        Fleet fleet = new Fleet(props(100, 3L));
+
+        List<DriverLocation> first = fleet.tickWindow(0, 30, Duration.ofMillis(300), Instant.EPOCH);
+        assertThat(first).hasSize(30);
+        assertThat(first.stream().map(DriverLocation::getDriverId).distinct().count()).isEqualTo(30);
+
+        // next window continues from where the cursor left off, wrapping past the end
+        List<DriverLocation> wrapped = fleet.tickWindow(90, 20, Duration.ofMillis(300), Instant.EPOCH);
+        assertThat(wrapped.stream().map(DriverLocation::getDriverId))
+                .containsExactly(91L, 92L, 93L, 94L, 95L, 96L, 97L, 98L, 99L, 100L,
+                        1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L);
+    }
+
+    @Test
+    void tickWindowCapsAtFleetSize() {
+        Fleet fleet = new Fleet(props(10, 1L));
+        assertThat(fleet.tickWindow(0, 999, Duration.ofMillis(100), Instant.EPOCH)).hasSize(10);
     }
 
     @Test

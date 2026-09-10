@@ -1,6 +1,9 @@
 {{- if .Values.flink.enabled }}
 {{- $f := .Values.flink }}
 {{- $sessionName := include "flowfleet.component.fullname" (list . "session") }}
+{{- if and $f.highAvailability.enabled (eq $f.storage.type "pvc") (gt (int $f.jobManager.replicas) 1) }}
+{{- fail "flink: HA with jobManager.replicas>1 needs shared storage — set flink.storage.type=s3 (a ReadWriteOnce PVC can't back multiple JobManagers)." }}
+{{- end }}
 {{- /* Storage roots for checkpoints / savepoints / HA metadata. */ -}}
 {{- $root := "" }}
 {{- if eq $f.storage.type "s3" }}
@@ -42,6 +45,17 @@ spec:
     {{- end }}
     metrics.reporter.prom.factory.class: "org.apache.flink.metrics.prometheus.PrometheusReporterFactory"
     metrics.reporter.prom.port: "9249"
+    {{- if $f.autoscaler.enabled }}
+    job.autoscaler.enabled: "true"
+    job.autoscaler.scaling.enabled: "true"
+    job.autoscaler.stabilization.interval: {{ $f.autoscaler.stabilizationInterval | quote }}
+    job.autoscaler.metrics.window: {{ $f.autoscaler.metricsWindow | quote }}
+    job.autoscaler.target.utilization: {{ $f.autoscaler.targetUtilization | quote }}
+    job.autoscaler.target.utilization.boundary: {{ $f.autoscaler.utilizationBoundary | quote }}
+    job.autoscaler.scale-up.grace-period: {{ $f.autoscaler.scaleUpGracePeriod | quote }}
+    job.autoscaler.scale-down.max-factor: {{ $f.autoscaler.scaleDownMaxFactor | quote }}
+    pipeline.max-parallelism: {{ $f.autoscaler.maxParallelism | quote }}
+    {{- end }}
     {{- range $k, $v := $f.extraConfig }}
     {{ $k }}: {{ $v | quote }}
     {{- end }}

@@ -1,0 +1,49 @@
+# Load-test preset (Phase 8):  helm upgrade flowfleet ./helm/flowfleet \
+#   -f helm/flowfleet/values.yaml -f helm/flowfleet/values-load.yaml
+#
+# Wide topic + a big generator pool + the Flink autoscaler + the consumer HPA.
+# Drive the rate with scripts/loadtest.sh (PROM_URL / GEN_URL -> port-forwards).
+
+kafka:
+  resources:
+    requests: { cpu: "1", memory: 2Gi }
+    limits: { cpu: "3", memory: 3Gi }
+
+locationGenerator:
+  drivers: 20000
+  targetRate: 0                # loadtest.sh sets it at runtime
+  locationsPartitions: 24
+  resources:
+    requests: { cpu: "1", memory: 1Gi }
+    limits: { cpu: "2", memory: 1536Mi }
+
+locationConsumer:
+  replicas: 3
+  hpa:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 12
+    targetCPUUtilizationPercentage: 70
+
+flink:
+  taskManager:
+    slotsPerTaskManager: 8
+    resource:
+      cpu: 2
+      memory: "4096m"
+  checkpointing:
+    interval: "30s"
+    unaligned: true
+  autoscaler:
+    enabled: true
+    metricsWindow: 3m
+    targetUtilization: "0.6"
+    utilizationBoundary: "0.2"
+    maxParallelism: 24
+  jobs:
+    driver-state: { parallelism: 4 }
+    driver-speed: { parallelism: 4 }
+    geofence: { parallelism: 4 }
+    anomaly: { parallelism: 2 }
+    timescale-sink: { parallelism: 4 }
+    clickhouse-sink: { parallelism: 4 }

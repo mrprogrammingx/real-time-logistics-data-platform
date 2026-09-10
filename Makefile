@@ -229,6 +229,31 @@ k8s-savepoint: ## Trigger a savepoint for one job:  make k8s-savepoint JOB=drive
 k8s-down: ## Delete the kind cluster
 	./scripts/k8s.sh down
 
+## ----- load testing (phase 8) ---------------------------------------------
+
+COMPOSE_LOAD := $(COMPOSE) -f docker-compose.yml -f docker-compose.load.yml
+
+.PHONY: load-up
+load-up: ## Start the stack with the load overlay (24 partitions, TM x3 / 8 slots, 20k-driver pool)
+	$(COMPOSE_LOAD) up -d --build
+	@echo "then: make cdc-register && make flink-submit-all && make load-ramp"
+
+.PHONY: load-ramp
+load-ramp: ## Ramp the generator 1k->50k ev/s, sampling Prometheus at each step
+	./scripts/loadtest.sh ramp
+
+.PHONY: load-rate
+load-rate: ## Set the generator to a fixed rate:  make load-rate RATE=25000
+	./scripts/loadtest.sh rate $(RATE)
+
+.PHONY: load-sample
+load-sample: ## Print one row of pipeline metrics from Prometheus right now
+	./scripts/loadtest.sh sample
+
+.PHONY: load-down
+load-down: ## Stop the load stack (keep volumes)
+	$(COMPOSE_LOAD) down
+
 ## ----- demo ---------------------------------------------------------------
 
 .PHONY: smoke

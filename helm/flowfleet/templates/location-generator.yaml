@@ -46,6 +46,10 @@ spec:
               value: {{ .Values.locationGenerator.speedup | quote }}
             - name: GENERATOR_SEED
               value: {{ .Values.locationGenerator.seed | quote }}
+            - name: GENERATOR_TARGET_RATE
+              value: {{ .Values.locationGenerator.targetRate | quote }}
+            - name: GENERATOR_LOCATIONS_PARTITIONS
+              value: {{ .Values.locationGenerator.locationsPartitions | quote }}
           readinessProbe:
             httpGet: { path: /actuator/health/readiness, port: http }
             initialDelaySeconds: 15

@@ -46,10 +46,23 @@ public class Fleet {
 
     /** One tick: {@code wallInterval * speedupFactor} of simulated movement for every driver. */
     public List<DriverLocation> tick(java.time.Duration wallInterval, Instant now) {
-        double simSeconds = wallInterval.toMillis() / 1000.0 * speedupFactor;
-        List<DriverLocation> batch = new ArrayList<>(drivers.size());
-        for (DriverSim d : drivers) {
-            batch.add(d.step(simSeconds, now));
+        return tickWindow(0, drivers.size(), wallInterval, now);
+    }
+
+    /**
+     * Step {@code count} drivers starting at index {@code offset} (wrapping), and return
+     * their samples. Used by the load-test rate mode, which advances a rotating window
+     * over the fleet each tick instead of the whole fleet. {@code perDriverInterval} is how
+     * much wall time each stepped driver represents (tick × fleet ÷ window).
+     */
+    public List<DriverLocation> tickWindow(int offset, int count,
+            java.time.Duration perDriverInterval, Instant now) {
+        int size = drivers.size();
+        int n = Math.max(0, Math.min(count, size));
+        double simSeconds = perDriverInterval.toMillis() / 1000.0 * speedupFactor;
+        List<DriverLocation> batch = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) {
+            batch.add(drivers.get(Math.floorMod(offset + i, size)).step(simSeconds, now));
         }
         return batch;
     }

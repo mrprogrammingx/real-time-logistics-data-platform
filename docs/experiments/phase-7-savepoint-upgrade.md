@@ -33,9 +33,9 @@ That patches `spec.job.parallelism`. The operator:
 **Watch it:**
 
 ```bash
-kubectl -n flowfleet get flinksessionjob flowfleet-flowfleet-driver-state -w
+kubectl -n flowfleet get flinksessionjob flowfleet-driver-state -w
 #   lifecycleState:  STABLE -> UPGRADING -> DEPLOYING -> STABLE
-kubectl -n flowfleet get flinksessionjob flowfleet-flowfleet-driver-state \
+kubectl -n flowfleet get flinksessionjob flowfleet-driver-state \
   -o jsonpath='{.status.jobStatus.savepointInfo.lastSavepoint.location}{"\n"}'
 ```
 
@@ -58,7 +58,7 @@ before and after — `ON CONFLICT DO NOTHING` absorbs the small reprocessed tail
 ## 2. Config change — same flow, triggered by a spec edit
 
 ```bash
-kubectl -n flowfleet patch flinkdeployment flowfleet-flowfleet-session --type=merge \
+kubectl -n flowfleet patch flinkdeployment flowfleet-session --type=merge \
   -p '{"spec":{"flinkConfiguration":{"execution.checkpointing.interval":"15s"}}}'
 ```
 
@@ -70,7 +70,7 @@ Changing the session `FlinkDeployment` recreates the cluster; each
 
 ```bash
 make k8s-savepoint JOB=geofence
-kubectl -n flowfleet get flinksessionjob flowfleet-flowfleet-geofence \
+kubectl -n flowfleet get flinksessionjob flowfleet-geofence \
   -o jsonpath='{.status.jobStatus.savepointInfo.savepointHistory[*].location}{"\n"}'
 ```
 

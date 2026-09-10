@@ -4,8 +4,10 @@
 FlinkSessionJob downloads its jar from a remote URI (the operator uses Flink's
 filesystem layer — local:// would resolve on the operator pod, not our image).
 This tiny server copies the baked jar out of the flowfleet/flink image once and
-serves it in-cluster, so jarURI is http://<this-svc>/flowfleet-flink-jobs.jar.
-The equivalent in a real cluster is S3/GCS or a Maven repo URL.
+serves it in-cluster; flink-jobs.yaml points jarURI at the FQDN
+http://<svc>.<ns>.svc.cluster.local/flowfleet-flink-jobs.jar (the operator runs
+in another namespace, so a bare name wouldn't resolve). The real-cluster
+equivalent is S3/GCS or a Maven repo URL — set flink.jarURI to use it.
 */ -}}
 apiVersion: v1
 kind: Service
@@ -39,6 +41,9 @@ spec:
           image: {{ include "flowfleet.image" (list . .Values.flink.image) }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["sh", "-c", "cp /opt/flink/usrlib/flowfleet-flink-jobs.jar /www/ && ls -l /www"]
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 250m, memory: 256Mi }
           volumeMounts:
             - { name: www, mountPath: /www }
       containers:

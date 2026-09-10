@@ -1,9 +1,10 @@
 {{- if .Values.networkPolicy.enabled }}
 {{- /*
 Default-deny ingress for the namespace, then the allows the stack needs:
-everything in the release may talk to everything else in the release, and the
-monitoring namespace may scrape. Needs a CNI that enforces NetworkPolicy
-(Calico, Cilium; not stock kind).
+  - everything in the release may talk to everything else in the release
+  - the monitoring namespace may scrape (when metrics are on)
+  - the flink-operator namespace may reach the session REST + the artifact server
+Needs a CNI that enforces NetworkPolicy (Calico, Cilium; not stock kind).
 */ -}}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -17,7 +18,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ include "flowfleet.fullname" . }}-allow-intra-release
+  name: {{ include "flowfleet.fullname" . }}-allow
   labels: {{- include "flowfleet.labels" . | nindent 4 }}
 spec:
   podSelector:
@@ -36,5 +37,13 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: monitoring
+    {{- end }}
+    {{- if .Values.flink.enabled }}
+    # The Flink Kubernetes Operator reaches the session REST API and the artifact
+    # server from its own namespace.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: flink-operator
     {{- end }}
 {{- end }}

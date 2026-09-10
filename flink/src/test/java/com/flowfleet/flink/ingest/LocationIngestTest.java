@@ -79,6 +79,15 @@ class LocationIngestTest {
     }
 
     @Test
+    void latencyMillisIsEventTimeToNowClampedAtZero() {
+        // sample stamped 2 s ago -> ~2000 ms latency
+        DriverLocation twoSecondsOld = Locations.at(1, 40.0, 44.0, 10_000);
+        assertThat(LocationIngest.latencyMillis(twoSecondsOld, 12_000)).isEqualTo(2_000);
+        // device clock ahead of the TM clock -> clamp, never negative
+        assertThat(LocationIngest.latencyMillis(twoSecondsOld, 9_500)).isZero();
+    }
+
+    @Test
     void countersReflectTheSplit() throws Exception {
         harness.processElement(new StreamRecord<>(ParsedLocation.of(Locations.at(1, 40.0, 44.0, 1_000))));
         harness.processElement(new StreamRecord<>(ParsedLocation.of(Locations.at(1, 40.0, 44.0, 2_000))));

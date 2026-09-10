@@ -19,14 +19,19 @@ Prometheus + Grafana, brought up by `docker-compose.yml` (Phase 6).
 
 `monitoring/prometheus/prometheus.yml` — scrape config.
 `monitoring/grafana/provisioning/` — datasource + dashboard provider (file-based).
-`monitoring/grafana/dashboards/flink.json` — the starter dashboard (throughput,
-backpressure, checkpoint duration/size, restarts, Kafka source lag, ingest valid/DLQ).
+`monitoring/grafana/dashboards/flink.json` — the dashboard: throughput,
+backpressure, checkpoint duration/size, restarts, Kafka source lag, ingest valid/DLQ,
+plus the Phase 8 panels (produced vs ingested vs target rate; end-to-end latency
+p50/p95/p99 from `flowfleet.ingest.latencyMs`).
 
 ## Custom metrics
 
-`LocationIngest` registers `flowfleet.ingest.valid` and `flowfleet.ingest.dlq` counters;
-the reporter exposes them as
-`flink_taskmanager_job_task_operator_flowfleet_ingest_{valid,dlq}`.
+`LocationIngest` registers `flowfleet.ingest.valid` / `flowfleet.ingest.dlq` counters and a
+`flowfleet.ingest.latencyMs` histogram (event time → Flink processing time); the reporter
+exposes them as `flink_taskmanager_job_task_operator_flowfleet_ingest_{valid,dlq}` and
+`..._flowfleet_ingest_latencyMs{quantile="0.5"|"0.95"|"0.99"}`. The generator's
+`flowfleet_generator_sent_total` counter and `flowfleet_generator_target_rate` gauge are on
+`/actuator/prometheus`.
 
 Phase 7 moves this to the Kubernetes monitoring stack: `kube-prometheus-stack`
 (Prometheus Operator + Grafana) discovers the `ServiceMonitor`s the Helm chart emits for
