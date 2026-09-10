@@ -30,6 +30,7 @@ public final class TimescaleSinkJob {
         env.fromSource(
                         KafkaIO.avroSource(cfg, Topics.DRIVER_STATE, cfg.groupId(NAME), DriverSnapshot.class),
                         WatermarkStrategy.noWatermarks(), "driver.state")
+                .map(new SlowMap<>(sinks.slowMapMs)).name("slow-map")
                 .addSink(JdbcSinks.driverState(sinks))
                 .name("timescale.driver_state");
 

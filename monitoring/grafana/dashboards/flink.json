@@ -1,0 +1,65 @@
+{
+  "uid": "flowfleet-flink",
+  "title": "FlowFleet — Flink",
+  "tags": ["flowfleet", "flink"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "10s",
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+    {
+      "type": "timeseries", "title": "Records in / sec (per task)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [{
+        "expr": "sum by (job_name, task_name) (flink_taskmanager_job_task_numRecordsInPerSecond)",
+        "legendFormat": "{{job_name}} / {{task_name}}"
+      }]
+    },
+    {
+      "type": "timeseries", "title": "Backpressure — busy vs backpressured (ms/s)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "ms", "max": 1000 }, "overrides": [] },
+      "targets": [
+        { "expr": "max by (task_name) (flink_taskmanager_job_task_busyTimeMsPerSecond)", "legendFormat": "busy {{task_name}}" },
+        { "expr": "max by (task_name) (flink_taskmanager_job_task_backPressuredTimeMsPerSecond)", "legendFormat": "backpressured {{task_name}}" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Checkpoint duration",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] },
+      "targets": [{ "expr": "flink_jobmanager_job_lastCheckpointDuration", "legendFormat": "{{job_name}}" }]
+    },
+    {
+      "type": "timeseries", "title": "Checkpoint size",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [{ "expr": "flink_jobmanager_job_lastCheckpointSize", "legendFormat": "{{job_name}}" }]
+    },
+    {
+      "type": "stat", "title": "Restarts",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [{ "expr": "sum by (job_name) (flink_jobmanager_job_numRestarts)", "legendFormat": "{{job_name}}" }]
+    },
+    {
+      "type": "timeseries", "title": "Kafka source lag (max records behind)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [{
+        "expr": "max by (job_name) (flink_taskmanager_job_task_operator_KafkaSourceReader_KafkaConsumer_records_lag_max)",
+        "legendFormat": "{{job_name}}"
+      }]
+    },
+    {
+      "type": "timeseries", "title": "Ingest — valid vs DLQ (rate/s)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [
+        { "expr": "sum(rate(flink_taskmanager_job_task_operator_flowfleet_ingest_valid[1m]))", "legendFormat": "valid" },
+        { "expr": "sum(rate(flink_taskmanager_job_task_operator_flowfleet_ingest_dlq[1m]))", "legendFormat": "dlq" }
+      ]
+    }
+  ]
+}

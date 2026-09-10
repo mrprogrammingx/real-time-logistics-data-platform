@@ -1,7 +1,13 @@
 # Failure recovery & the experiments
 
-> Status: **design** (executed in Phase 6). Each scenario below becomes a documented
-> experiment with before/after metrics — that is what makes this project not a tutorial.
+> Status: **implemented** (Phase 6).
+> - Poison messages: `flink/…/ingest/ResilientLocationDeserializer` + `LocationIngest` —
+>   a bad record → DLQ with its Kafka offset, never a job failure. `LocationIngestTest`.
+> - Late data: `WatermarkLatenessIT` proves a sample past the watermark → side output.
+> - Idempotent replay: `TimescaleSinkIT` / `ClickHouseSinkIT` (Phase 5).
+> - Cluster-level chaos (kill TaskManager, slow sink, replay): `scripts/chaos.sh` /
+>   `make chaos-*`, walkthrough in `docs/experiments/phase-6-chaos.md`.
+> - Metrics: Flink → Prometheus (:19090) → Grafana (:13000, "FlowFleet — Flink").
 
 ## 1. TaskManager failure
 

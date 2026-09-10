@@ -3,10 +3,9 @@ package com.flowfleet.flink.anomaly;
 import com.flowfleet.events.Topics;
 import com.flowfleet.events.avro.DeliveryAlert;
 import com.flowfleet.events.avro.DriverLocation;
-import com.flowfleet.flink.GpsGuard;
 import com.flowfleet.flink.JobConfig;
 import com.flowfleet.flink.KafkaIO;
-import com.flowfleet.flink.Watermarks;
+import com.flowfleet.flink.ingest.LocationSource;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 
 /**
@@ -27,12 +26,7 @@ public final class AnomalyJob {
     }
 
     public static void build(StreamExecutionEnvironment env, JobConfig cfg) {
-        env.fromSource(
-                        KafkaIO.avroSource(cfg, Topics.DRIVER_LOCATIONS, cfg.groupId(NAME), DriverLocation.class),
-                        Watermarks.forDriverLocation(),
-                        "driver.locations")
-                .process(new GpsGuard())
-                .name("gps-guard")
+        LocationSource.ingest(env, cfg, NAME)
                 .keyBy(DriverLocation::getDriverId)
                 .process(new AnomalyFunction())
                 .name("anomaly")

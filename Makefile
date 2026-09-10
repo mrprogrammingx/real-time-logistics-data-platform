@@ -159,6 +159,32 @@ clickhouse-peek: ## Deduplicated row counts in ClickHouse
 	$(COMPOSE) exec clickhouse clickhouse-client -u flowfleet --password flowfleet -q \
 	  "SELECT 'geofence_events' t, count() c FROM flowfleet.geofence_events FINAL UNION ALL SELECT 'delivery_alerts', count() FROM flowfleet.delivery_alerts FINAL"
 
+## ----- failure engineering (phase 6) ----------------------------------------
+
+.PHONY: chaos-kill-tm
+chaos-kill-tm: ## Kill a TaskManager, watch the job recover from its last checkpoint
+	./scripts/chaos.sh kill-tm
+
+.PHONY: chaos-slow-sink
+chaos-slow-sink: ## Resubmit the Timescale sink with a 20ms/record delay (backpressure)
+	./scripts/chaos.sh slow-sink 20
+
+.PHONY: chaos-malformed
+chaos-malformed: ## Inject 5 non-Avro messages -> watch them land on the DLQ
+	./scripts/chaos.sh malformed 5
+
+.PHONY: chaos-duplicate
+chaos-duplicate: ## Replay driver.state into the sink; TimescaleDB row count must not change
+	./scripts/chaos.sh duplicate
+
+.PHONY: chaos-metrics
+chaos-metrics: ## Dump Flink checkpoint / backpressure / restart metrics for a job
+	./scripts/chaos.sh metrics $(JOB)
+
+.PHONY: grafana
+grafana: ## Open the Grafana Flink dashboard
+	@echo "http://localhost:13000/d/flowfleet-flink  (anonymous viewer; admin/flowfleet)"
+
 ## ----- demo ---------------------------------------------------------------
 
 .PHONY: smoke
