@@ -1,0 +1,40 @@
+FlowFleet {{ .Chart.AppVersion }} deployed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+Components:
+{{- if .Values.postgres.enabled }}
+  postgres           {{ include "flowfleet.component.fullname" (list . "postgres") }}:5432
+{{- end }}
+{{- if .Values.kafka.enabled }}
+  kafka              {{ include "flowfleet.kafkaHeadless" . }}:9092  (KRaft, single node)
+{{- end }}
+{{- if .Values.schemaRegistry.enabled }}
+  schema-registry    http://{{ include "flowfleet.component.fullname" (list . "schema-registry") }}:8081
+{{- end }}
+{{- if .Values.timescaledb.enabled }}
+  timescaledb        {{ include "flowfleet.timescaleHost" . }}:5432
+{{- end }}
+{{- if .Values.clickhouse.enabled }}
+  clickhouse         {{ include "flowfleet.clickhouseHost" . }}:8123
+{{- end }}
+{{- if .Values.api.enabled }}
+  api                http://{{ include "flowfleet.component.fullname" (list . "api") }}:{{ .Values.api.service.port }}
+{{- end }}
+
+{{ if .Values.flink.enabled -}}
+Flink (requires the Flink Kubernetes Operator in the cluster):
+
+  kubectl -n {{ .Release.Namespace }} get flinkdeployment,flinksessionjob
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "flowfleet.component.fullname" (list . "session") }}-rest 8081:8081
+  #  -> Flink UI at http://localhost:8081
+
+Jobs deployed ({{ .Values.flink.upgradeMode }} upgrade mode):
+{{- range $name, $cfg := .Values.flink.jobs }}
+  - {{ $name }}  (parallelism {{ $cfg.parallelism | default 2 }})
+{{- end }}
+
+Savepoint-upgrade demo:  docs/experiments/phase-7-savepoint-upgrade.md
+{{- end }}
+
+Smoke it:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "flowfleet.component.fullname" (list . "api") }} 18080:{{ .Values.api.service.port }}
+  curl -s localhost:18080/actuator/health | jq

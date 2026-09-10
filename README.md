@@ -62,17 +62,42 @@ and a set of interview questions it lets you answer from experience.
 | **4** | Flink jobs — keyed driver state, event-time windows, timers, geofencing (broadcast + JTS) | ✅ **done** |
 | **5** | Flink sinks → TimescaleDB + ClickHouse — batching, retries, idempotent writes | ✅ **done** |
 | **6** | Failure engineering — poison-message DLQ, late-data, checkpoint recovery, backpressure, Prometheus + Grafana | ✅ **done** |
-| 7 | Kubernetes, Flink K8s Operator, Helm, ArgoCD | ⬜ next |
-| 8 | Load testing 1k→50k events/s, tuning, autoscaling | ⬜ |
+| **7** | Kubernetes — Helm chart, Flink Kubernetes Operator (`FlinkDeployment` + `FlinkSessionJob`, savepoint upgrades), Argo CD (app-of-apps) | ✅ **done** |
+| 8 | Load testing 1k→50k events/s, tuning, autoscaling | ⬜ next |
 
 Phase details and per-phase interview questions live in [`docs/`](docs/) and
 [`architecture/`](architecture/).
 
 ---
 
-## Phase 6 — what's here now
+## Phase 7 — what's here now
 
-**Hardening + failure experiments.**
+**The stack on Kubernetes, delivered by GitOps.** `docker-compose.yml` still runs
+Phases 1–6 locally; Phase 7 packages the same topology as a Helm chart and hands the
+Flink jobs to the Flink Kubernetes Operator.
+
+* **[`helm/flowfleet/`](helm/flowfleet)** — one umbrella chart, one first-party template per
+  component (datastores as StatefulSets, Kafka KRaft, the Spring services, the two sink
+  DBs). One `ConfigMap` + `Secret`, `envFrom` everywhere. `values-kind.yaml` for a laptop
+  cluster. Renders offline; CI validates every manifest against real CRD schemas.
+* **Flink** — a session `FlinkDeployment` + one `FlinkSessionJob` per job
+  ([`flink-session.yaml`](helm/flowfleet/templates/flink-session.yaml) /
+  [`flink-jobs.yaml`](helm/flowfleet/templates/flink-jobs.yaml)). `upgradeMode: savepoint` —
+  editing a job's CR makes the operator stop-with-savepoint and restore. RocksDB state on a
+  PVC (or S3); optional Kubernetes HA. A tiny in-cluster artifact server feeds the job jar
+  (session jobs need a remote `jarURI`).
+* **[`argocd/`](argocd)** — app-of-apps: Flink Operator (sync-wave −2) → kube-prometheus-stack
+  (−1) → the flowfleet chart (0), with `ignoreDifferences` for the fields the operator
+  writes back.
+* **[`scripts/k8s.sh`](scripts/k8s.sh)** / `make k8s-up` — kind cluster + cert-manager +
+  operator + build/load images + `helm install`. `make k8s-jobs` / `k8s-ui` / `k8s-savepoint`.
+
+Design + trade-offs (session vs application mode, state storage, sync waves):
+[`architecture/deployment.md`](architecture/deployment.md) and [`k8s/README.md`](k8s/README.md).
+Savepoint-upgrade experiment: [`docs/experiments/phase-7-savepoint-upgrade.md`](docs/experiments/phase-7-savepoint-upgrade.md).
+Interview Q&A: [`docs/interview-questions/phase-7.md`](docs/interview-questions/phase-7.md).
+
+<details><summary>Phase 6 — failure engineering (still here)</summary>
 
 * **Poison messages** — [`ResilientLocationDeserializer`](flink/src/main/java/com/flowfleet/flink/ingest/ResilientLocationDeserializer.java)
   never throws: an undecodable Kafka record becomes a `ParsedLocation` with its error +
@@ -93,6 +118,8 @@ Phase details and per-phase interview questions live in [`docs/`](docs/) and
 
 Walkthrough with fill-in results: [`docs/experiments/phase-6-chaos.md`](docs/experiments/phase-6-chaos.md).
 Interview Q&A: [`docs/interview-questions/phase-6.md`](docs/interview-questions/phase-6.md).
+
+</details>
 
 <details><summary>Phase 5 — Flink sinks → TimescaleDB + ClickHouse (still here)</summary>
 
@@ -241,9 +268,12 @@ make kafka-tail
 ├── kafka-connect/              Debezium connector config + notes
 ├── database/                   TimescaleDB + ClickHouse sink DDL
 ├── monitoring/                 Prometheus scrape config + Grafana provisioning
-├── architecture/               design docs (Kafka, Flink, CDC, idempotency, recovery)
+├── helm/flowfleet/             the platform Helm chart (Phase 7)
+├── argocd/                     Argo CD app-of-apps (Phase 7)
+├── k8s/                        Flink Operator + kube-prometheus-stack values, kind cluster
+├── architecture/               design docs (Kafka, Flink, CDC, idempotency, recovery, deployment)
 ├── docs/                       phase roadmap + interview questions + experiments
-├── scripts/                    smoke / kafka / schema-registry / connect / cdc-demo / flink / chaos
+├── scripts/                    smoke / kafka / schema-registry / connect / cdc-demo / flink / chaos / k8s
 ├── flink/                      Flink jobs (Java 17, Flink 1.20) — one fat jar, one class per job
 └── services/
     ├── common/                 domain model, no framework deps (Java 17)
@@ -255,7 +285,7 @@ make kafka-tail
     └── location-consumer/      consumer-group member (rebalance experiment)
 ```
 
-Later phases add `helm/` and `argocd/`.
+Phase 8 adds load-test tooling under `scripts/`.
 
 ---
 
@@ -274,6 +304,7 @@ Later phases add `helm/` and `argocd/`.
 | DB | PostgreSQL 16 + PostGIS 3.5 (`imresamu/postgis`, multi-arch) |
 | Tests | JUnit 5, AssertJ, Mockito, Testcontainers (PostGIS · Redpanda · Timescale · ClickHouse), Flink test-harness + MiniCluster |
 | Containers | Docker / Docker Compose |
+| Kubernetes | Helm 3, Flink Kubernetes Operator 1.10, Argo CD, kube-prometheus-stack; `kind` for local (`scripts/k8s.sh`) |
 
 > **Note on Docker API version:** Docker Engine 29+ requires API ≥ 1.44. The Testcontainers
 > client is pinned to `1.44` for the test JVM in `services/api/pom.xml`

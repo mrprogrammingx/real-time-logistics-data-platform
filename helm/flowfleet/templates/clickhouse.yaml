@@ -1,0 +1,89 @@
+{{- if .Values.clickhouse.enabled }}
+{{- $name := include "flowfleet.component.fullname" (list . "clickhouse") }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-init
+  labels: {{- include "flowfleet.componentLabels" (list . "clickhouse") | nindent 4 }}
+data:
+  # Kept in sync with database/clickhouse/init.sql by `make helm-sync` (CI guards it).
+  10-init.sql: |-
+{{ .Files.Get "files/db/clickhouse-init.sql" | indent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels: {{- include "flowfleet.componentLabels" (list . "clickhouse") | nindent 4 }}
+spec:
+  clusterIP: None
+  ports:
+    - { name: http, port: 8123, targetPort: http }
+    - { name: native, port: 9000, targetPort: native }
+  selector: {{- include "flowfleet.selectorLabels" (list . "clickhouse") | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels: {{- include "flowfleet.componentLabels" (list . "clickhouse") | nindent 4 }}
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels: {{- include "flowfleet.selectorLabels" (list . "clickhouse") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "flowfleet.selectorLabels" (list . "clickhouse") | nindent 8 }}
+      annotations:
+        checksum/init: {{ .Files.Get "files/db/clickhouse-init.sql" | sha256sum }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: clickhouse
+          image: {{ include "flowfleet.image" (list . .Values.clickhouse.image) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 8123 }
+            - { name: native, containerPort: 9000 }
+          env:
+            - name: CLICKHOUSE_DB
+              value: {{ .Values.clickhouse.database | quote }}
+            - name: CLICKHOUSE_USER
+              valueFrom: { secretKeyRef: { name: {{ include "flowfleet.secretName" . }}, key: CLICKHOUSE_USER } }
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "flowfleet.secretName" . }}, key: CLICKHOUSE_PASSWORD } }
+            - name: CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT
+              value: "1"
+          readinessProbe:
+            httpGet: { path: /ping, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /ping, port: http }
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          resources: {{- toYaml .Values.clickhouse.resources | nindent 12 }}
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/clickhouse }
+            - { name: init, mountPath: /docker-entrypoint-initdb.d }
+      volumes:
+        - name: init
+          configMap:
+            name: {{ $name }}-init
+      {{- include "flowfleet.scheduling" . | nindent 6 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with .Values.clickhouse.persistence.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.clickhouse.persistence.size }}
+{{- end }}

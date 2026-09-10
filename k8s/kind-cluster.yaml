@@ -1,0 +1,18 @@
+# kind cluster for FlowFleet: one control-plane that also schedules workloads,
+# plus host-port mappings so the API / Flink UI / Grafana are reachable on
+# localhost without `kubectl port-forward`.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: flowfleet
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      - { containerPort: 30080, hostPort: 18080, protocol: TCP }   # api
+      - { containerPort: 30081, hostPort: 18086, protocol: TCP }   # flink ui
+      - { containerPort: 30300, hostPort: 13000, protocol: TCP }   # grafana

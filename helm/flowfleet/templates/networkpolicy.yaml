@@ -1,0 +1,40 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- /*
+Default-deny ingress for the namespace, then the allows the stack needs:
+everything in the release may talk to everything else in the release, and the
+monitoring namespace may scrape. Needs a CNI that enforces NetworkPolicy
+(Calico, Cilium; not stock kind).
+*/ -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "flowfleet.fullname" . }}-default-deny
+  labels: {{- include "flowfleet.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "flowfleet.fullname" . }}-allow-intra-release
+  labels: {{- include "flowfleet.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: flowfleet
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: flowfleet
+              app.kubernetes.io/instance: {{ .Release.Name }}
+    {{- if .Values.metrics.enabled }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+    {{- end }}
+{{- end }}

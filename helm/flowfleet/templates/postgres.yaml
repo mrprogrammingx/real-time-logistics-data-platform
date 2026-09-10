@@ -1,0 +1,82 @@
+{{- if .Values.postgres.enabled }}
+{{- $name := include "flowfleet.component.fullname" (list . "postgres") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels: {{- include "flowfleet.componentLabels" (list . "postgres") | nindent 4 }}
+spec:
+  clusterIP: None
+  ports:
+    - { name: postgres, port: 5432, targetPort: postgres }
+  selector: {{- include "flowfleet.selectorLabels" (list . "postgres") | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels: {{- include "flowfleet.componentLabels" (list . "postgres") | nindent 4 }}
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels: {{- include "flowfleet.selectorLabels" (list . "postgres") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "flowfleet.selectorLabels" (list . "postgres") | nindent 8 }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        fsGroup: 999
+      containers:
+        - name: postgres
+          image: {{ include "flowfleet.image" (list . .Values.postgres.image) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - postgres
+            {{- range .Values.postgres.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          ports:
+            - { name: postgres, containerPort: 5432 }
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.postgres.database | quote }}
+            - name: POSTGRES_USER
+              valueFrom: { secretKeyRef: { name: {{ include "flowfleet.secretName" . }}, key: POSTGRES_USER } }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "flowfleet.secretName" . }}, key: POSTGRES_PASSWORD } }
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", {{ .Values.secret.postgresUser | quote }}, "-d", {{ .Values.postgres.database | quote }}] }
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            exec: { command: ["pg_isready", "-U", {{ .Values.secret.postgresUser | quote }}, "-d", {{ .Values.postgres.database | quote }}] }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources: {{- toYaml .Values.postgres.resources | nindent 12 }}
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+      {{- include "flowfleet.scheduling" . | nindent 6 }}
+  {{- if .Values.postgres.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with .Values.postgres.persistence.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.postgres.persistence.size }}
+  {{- else }}
+      volumes:
+        - { name: data, emptyDir: {} }
+  {{- end }}
+{{- end }}

@@ -1,0 +1,31 @@
+# Helm values for kube-prometheus-stack (prometheus-community).
+# Mirrored inline in argocd/applications/10-kube-prometheus-stack.yaml.
+#
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+#     -n monitoring --create-namespace -f k8s/monitoring/kube-prometheus-stack-values.yaml
+
+fullnameOverride: kube-prometheus-stack
+
+prometheus:
+  prometheusSpec:
+    retention: 6h
+    # Discover ServiceMonitors/PodMonitors regardless of their labels.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    resources:
+      requests: { cpu: 250m, memory: 1Gi }
+
+grafana:
+  adminPassword: flowfleet
+  sidecar:
+    dashboards:
+      enabled: true
+      searchNamespace: ALL
+      label: grafana_dashboard
+
+# kind doesn't expose these control-plane endpoints with scrapeable certs.
+kubeControllerManager: { enabled: false }
+kubeScheduler: { enabled: false }
+kubeEtcd: { enabled: false }
+kubeProxy: { enabled: false }

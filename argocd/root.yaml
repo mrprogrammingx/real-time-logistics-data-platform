@@ -1,0 +1,30 @@
+# App-of-apps: point Argo CD at this one file and it manages the rest.
+#   argocd app create flowfleet-root \
+#     --repo https://github.com/mrprogrammingx/real-time-logistics-data-platform \
+#     --path argocd/applications --dest-server https://kubernetes.default.svc \
+#     --dest-namespace argocd --directory-recurse
+# or:  kubectl apply -f argocd/root.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: flowfleet-root
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: flowfleet
+  source:
+    repoURL: https://github.com/mrprogrammingx/real-time-logistics-data-platform
+    targetRevision: main
+    path: argocd/applications
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

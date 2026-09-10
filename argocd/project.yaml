@@ -1,0 +1,29 @@
+# AppProject that scopes what the FlowFleet apps may deploy and where.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: flowfleet
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: FlowFleet real-time logistics platform
+  sourceRepos:
+    - https://github.com/mrprogrammingx/real-time-logistics-data-platform
+    - https://downloads.apache.org/flink/flink-kubernetes-operator-1.10.0/
+    - https://prometheus-community.github.io/helm-charts
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: flowfleet
+    - server: https://kubernetes.default.svc
+      namespace: flink-operator
+    - server: https://kubernetes.default.svc
+      namespace: monitoring
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+  orphanedResources:
+    warn: true

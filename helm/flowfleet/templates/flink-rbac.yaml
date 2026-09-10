@@ -1,0 +1,57 @@
+{{- if .Values.flink.enabled }}
+{{- /*
+The service account the JobManager/TaskManager pods run as. In native mode the
+JobManager itself creates TaskManager pods and the HA ConfigMaps, so it needs
+write access to pods/configmaps/services in this namespace. The Flink Kubernetes
+Operator (installed cluster-wide, separately) manages the FlinkDeployment CR
+itself with its own permissions.
+*/ -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.flink.serviceAccount }}
+  labels: {{- include "flowfleet.componentLabels" (list . "flink") | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Values.flink.serviceAccount }}
+  labels: {{- include "flowfleet.componentLabels" (list . "flink") | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "configmaps", "services"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete", "deletecollection"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/finalizers", "replicasets"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Values.flink.serviceAccount }}
+  labels: {{- include "flowfleet.componentLabels" (list . "flink") | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ .Values.flink.serviceAccount }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.flink.serviceAccount }}
+    namespace: {{ .Release.Namespace }}
+{{- if eq .Values.flink.storage.type "pvc" }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "flowfleet.component.fullname" (list . "flink-data") }}
+  labels: {{- include "flowfleet.componentLabels" (list . "flink") | nindent 4 }}
+spec:
+  accessModes: [{{ .Values.flink.storage.pvc.accessMode | quote }}]
+  {{- with .Values.flink.storage.pvc.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.flink.storage.pvc.size }}
+{{- end }}
+{{- end }}

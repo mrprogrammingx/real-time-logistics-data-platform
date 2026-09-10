@@ -1,0 +1,43 @@
+# Wave -2: the Flink Kubernetes Operator (CRDs + controller). Everything Flink in
+# the flowfleet chart depends on its CRDs existing first.
+#
+# Prereq: cert-manager (the operator's admission webhook needs it). Install once:
+#   kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.16.2/cert-manager.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: flink-kubernetes-operator
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: flowfleet
+  source:
+    repoURL: https://downloads.apache.org/flink/flink-kubernetes-operator-1.10.0/
+    chart: flink-kubernetes-operator
+    targetRevision: 1.10.0
+    helm:
+      releaseName: flink-kubernetes-operator
+      values: |
+        watchNamespaces: ["flowfleet"]
+        operatorPod:
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { cpu: "1", memory: 1Gi }
+        defaultConfiguration:
+          create: true
+          append: true
+          flink-conf.yaml: |
+            kubernetes.operator.metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+            kubernetes.operator.metrics.reporter.prom.port: 9999
+            kubernetes.operator.reconcile.interval: 15 s
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: flink-operator
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true   # the operator CRDs exceed the annotation size limit

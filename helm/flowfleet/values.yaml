@@ -1,0 +1,281 @@
+# ============================================================================
+# FlowFleet Helm values — production-leaning defaults.
+# For a local kind/minikube cluster use:  -f values-kind.yaml
+# ============================================================================
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Applied to every workload's pod spec.
+image:
+  registry: ""                 # e.g. ghcr.io/mrprogrammingx  (trailing slash added by helper)
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+# Shared connection coordinates. Every component reads these from one ConfigMap
+# (flowfleet-env) so there is a single place to repoint Kafka / the DB. Leave
+# empty to derive the in-cluster service names from the release; set to point the
+# stack at an external Kafka / Schema Registry.
+env:
+  kafkaBootstrap: ""
+  schemaRegistryUrl: ""
+
+# Demo credentials. In a real cluster this Secret is external (Sealed Secrets /
+# External Secrets / SOPS) and `create: false`.
+secret:
+  create: true
+  name: "flowfleet-credentials"
+  postgresUser: flowfleet
+  postgresPassword: flowfleet
+  timescaleUser: flowfleet
+  timescalePassword: flowfleet
+  clickhouseUser: flowfleet
+  clickhousePassword: flowfleet
+
+# ---------------------------------------------------------------------------
+# Datastores. Single-replica StatefulSets that mirror docker-compose; swap in
+# an operator/Bitnami chart for a real deployment.
+# ---------------------------------------------------------------------------
+postgres:
+  enabled: true
+  image: imresamu/postgis:16-3.5
+  database: flowfleet
+  # wal_level=logical etc. — Debezium needs this.
+  extraArgs:
+    - "-c"
+    - "wal_level=logical"
+    - "-c"
+    - "max_wal_senders=10"
+    - "-c"
+    - "max_replication_slots=10"
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: ""
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "1", memory: 1Gi }
+
+kafka:
+  enabled: true
+  image: confluentinc/cp-kafka:7.8.0
+  clusterId: "flowfleet-kraft-0000000000"
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: ""
+  resources:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits: { cpu: "2", memory: 2Gi }
+
+schemaRegistry:
+  enabled: true
+  image: confluentinc/cp-schema-registry:7.8.0
+  compatibilityLevel: full
+  resources:
+    requests: { cpu: 100m, memory: 512Mi }
+    limits: { cpu: 500m, memory: 1Gi }
+
+timescaledb:
+  enabled: true
+  image: timescale/timescaledb:2.17.2-pg16
+  database: flowfleet
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: ""
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "1", memory: 1Gi }
+
+clickhouse:
+  enabled: true
+  image: clickhouse/clickhouse-server:24.8
+  database: flowfleet
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: ""
+  resources:
+    requests: { cpu: 250m, memory: 1Gi }
+    limits: { cpu: "2", memory: 2Gi }
+
+# ---------------------------------------------------------------------------
+# Kafka Connect + Debezium (Phase 3). Off by default — the CDC path is exercised
+# by the embedded-engine IT; turn on for an end-to-end cluster.
+# ---------------------------------------------------------------------------
+kafkaConnect:
+  enabled: false
+  image:
+    repository: flowfleet/kafka-connect
+    tag: "0.1.0"
+  replicas: 1
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "1", memory: 1Gi }
+
+# ---------------------------------------------------------------------------
+# Spring services.
+# ---------------------------------------------------------------------------
+api:
+  enabled: true
+  image:
+    repository: flowfleet/api
+    tag: "0.1.0"
+  replicas: 2
+  service:
+    type: ClusterIP
+    port: 8080
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "1", memory: 768Mi }
+  # PodDisruptionBudget so a node drain keeps one replica serving.
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+locationGenerator:
+  enabled: true
+  image:
+    repository: flowfleet/location-generator
+    tag: "0.1.0"
+  replicas: 1
+  drivers: 200
+  speedup: "1.0"
+  seed: "42"
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "1", memory: 768Mi }
+
+locationConsumer:
+  enabled: true
+  image:
+    repository: flowfleet/location-consumer
+    tag: "0.1.0"
+  replicas: 3
+  resources:
+    requests: { cpu: 100m, memory: 384Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+# ---------------------------------------------------------------------------
+# Flink — deployed as a session cluster (FlinkDeployment) plus one
+# FlinkSessionJob per job. Requires the Flink Kubernetes Operator in the
+# cluster (see k8s/operators/).
+# ---------------------------------------------------------------------------
+flink:
+  enabled: true
+  image:
+    repository: flowfleet/flink
+    tag: "0.1.0"
+  flinkVersion: v1_20
+  serviceAccount: flowfleet-flink
+
+  # FlinkSessionJob needs a *remote* jar URI. Empty => use the in-cluster
+  # artifact server below (serves the jar baked into the flink image). Set to an
+  # S3/GCS/HTTP URL to skip it.
+  jarURI: ""
+  artifactServer:
+    enabled: true
+    image: busybox:1.37
+
+  jobManager:
+    replicas: 1               # >1 needs highAvailability.enabled=true (operator enforces)
+    resource:
+      cpu: 1
+      memory: "1600m"
+  taskManager:
+    # In native session mode the operator creates TaskManagers on demand to
+    # satisfy slot requests; there is no fixed replica count. Size each one:
+    slotsPerTaskManager: 4
+    resource:
+      cpu: 1
+      memory: "2560m"
+
+  # State + HA storage.
+  #   pvc - one ReadWriteOnce PVC at /flink-data; fine on single-node kind.
+  #   s3  - s3://<bucket>/{checkpoints,savepoints,ha}; any node can restore. Needs
+  #         the flink-s3-fs plugin baked into the flink image + a Secret with
+  #         AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY on the pod (add to flowfleet
+  #         credentials or a dedicated one referenced from podTemplate).
+  storage:
+    type: pvc
+    pvc:
+      size: 20Gi
+      storageClass: ""
+      accessMode: ReadWriteOnce
+    s3:
+      bucket: "flowfleet-flink"
+      endpoint: ""             # e.g. http://minio.minio:9000 ; empty = AWS S3
+      pathStyleAccess: true
+
+  highAvailability:
+    enabled: false             # kubernetes HA; turn on with jobManager.replicas>1
+
+  checkpointing:
+    interval: "30s"
+    unaligned: true
+    retainOnCancellation: true
+
+  # Applied to the session cluster's flinkConfiguration verbatim (strings only).
+  extraConfig:
+    taskmanager.memory.managed.fraction: "0.4"
+    restart-strategy.type: exponential-delay
+    restart-strategy.exponential-delay.initial-backoff: "10s"
+    restart-strategy.exponential-delay.max-backoff: "2min"
+
+  # The jobs — one FlinkSessionJob each. Total slots needed = Σ parallelism;
+  # the session cluster spins up ⌈total / slotsPerTaskManager⌉ TaskManagers.
+  jobs:
+    driver-state:
+      entryClass: com.flowfleet.flink.driverstate.DriverStateJob
+      parallelism: 2
+    driver-speed:
+      entryClass: com.flowfleet.flink.speed.DriverSpeedJob
+      parallelism: 2
+    geofence:
+      entryClass: com.flowfleet.flink.geofence.GeofenceJob
+      parallelism: 2
+    anomaly:
+      entryClass: com.flowfleet.flink.anomaly.AnomalyJob
+      parallelism: 2
+    timescale-sink:
+      entryClass: com.flowfleet.flink.sink.TimescaleSinkJob
+      parallelism: 2
+    clickhouse-sink:
+      entryClass: com.flowfleet.flink.sink.ClickHouseSinkJob
+      parallelism: 2
+
+  # How the operator rolls a job spec change: `savepoint` (stop-with-savepoint,
+  # restore) or `last-state` (from the last checkpoint, no clean stop).
+  upgradeMode: savepoint
+
+# ---------------------------------------------------------------------------
+# Observability. ServiceMonitor/PodMonitor need the Prometheus Operator CRDs
+# (kube-prometheus-stack). The Grafana dashboard is shipped as a sidecar-loaded
+# ConfigMap.
+# ---------------------------------------------------------------------------
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 15s
+    # Label the Prometheus Operator selects on (kube-prometheus-stack default).
+    labels:
+      release: kube-prometheus-stack
+  grafanaDashboard:
+    enabled: true
+    labels:
+      grafana_dashboard: "1"
+
+# ---------------------------------------------------------------------------
+# NetworkPolicy — default-deny ingress in the namespace + the few allows the
+# stack needs. Off by default (needs a CNI that enforces them).
+# ---------------------------------------------------------------------------
+networkPolicy:
+  enabled: false
+
+commonLabels: {}
+commonAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

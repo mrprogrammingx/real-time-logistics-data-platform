@@ -10,8 +10,10 @@ Prometheus + Grafana, brought up by `docker-compose.yml` (Phase 6).
 
 ## What's scraped
 
-- **Flink** — the `PrometheusReporter` (bundled in the image, `flink/Dockerfile` moves it
-  to `lib/`) exposes metrics on `:9250` (JobManager) and `:9251` (TaskManager).
+- **Flink** — the `PrometheusReporter` (an auto-loaded plugin under
+  `/opt/flink/plugins/metrics-prometheus/` in the image) exposes metrics on `:9250`
+  (JobManager) and `:9251` (TaskManager), enabled by `metrics.reporter.prom.*` in
+  `FLINK_PROPERTIES`.
 - **Spring services** — `api`, `location-generator`, `location-consumer` on
   `/actuator/prometheus` (Micrometer).
 
@@ -26,5 +28,7 @@ backpressure, checkpoint duration/size, restarts, Kafka source lag, ingest valid
 the reporter exposes them as
 `flink_taskmanager_job_task_operator_flowfleet_ingest_{valid,dlq}`.
 
-Phase 7 adds Kafka-broker metrics (JMX exporter) and per-connector Debezium metrics, and
-moves this to the Kubernetes monitoring stack.
+Phase 7 moves this to the Kubernetes monitoring stack: `kube-prometheus-stack`
+(Prometheus Operator + Grafana) discovers the `ServiceMonitor`s the Helm chart emits for
+the Spring services and a `PodMonitor` for the Flink pods; the Flink dashboard ships as a
+sidecar-loaded `ConfigMap`. See [`../k8s/README.md`](../k8s/README.md).

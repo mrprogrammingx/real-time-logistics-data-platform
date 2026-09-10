@@ -1,0 +1,107 @@
+{{- if .Values.flink.enabled }}
+{{- $f := .Values.flink }}
+{{- $sessionName := include "flowfleet.component.fullname" (list . "session") }}
+{{- /* Storage roots for checkpoints / savepoints / HA metadata. */ -}}
+{{- $root := "" }}
+{{- if eq $f.storage.type "s3" }}
+{{-   $root = printf "s3://%s" $f.storage.s3.bucket }}
+{{- else }}
+{{-   $root = "file:///flink-data" }}
+{{- end }}
+apiVersion: flink.apache.org/v1beta1
+kind: FlinkDeployment
+metadata:
+  name: {{ $sessionName }}
+  labels: {{- include "flowfleet.componentLabels" (list . "flink") | nindent 4 }}
+spec:
+  image: {{ include "flowfleet.image" (list . $f.image) }}
+  imagePullPolicy: {{ .Values.image.pullPolicy }}
+  flinkVersion: {{ $f.flinkVersion }}
+  serviceAccount: {{ $f.serviceAccount }}
+  mode: native
+  flinkConfiguration:
+    taskmanager.numberOfTaskSlots: {{ $f.taskManager.slotsPerTaskManager | quote }}
+    state.backend.type: "rocksdb"
+    state.backend.incremental: "true"
+    state.checkpoints.dir: "{{ $root }}/checkpoints"
+    state.savepoints.dir: "{{ $root }}/savepoints"
+    execution.checkpointing.interval: {{ $f.checkpointing.interval | quote }}
+    execution.checkpointing.unaligned: {{ $f.checkpointing.unaligned | quote }}
+    {{- if $f.checkpointing.retainOnCancellation }}
+    execution.checkpointing.externalized-checkpoint-retention: "RETAIN_ON_CANCELLATION"
+    {{- end }}
+    {{- if $f.highAvailability.enabled }}
+    high-availability.type: "kubernetes"
+    high-availability.storageDir: "{{ $root }}/ha"
+    {{- end }}
+    {{- if eq $f.storage.type "s3" }}
+    {{- with $f.storage.s3.endpoint }}
+    s3.endpoint: {{ . | quote }}
+    {{- end }}
+    s3.path.style.access: {{ $f.storage.s3.pathStyleAccess | quote }}
+    {{- end }}
+    metrics.reporter.prom.factory.class: "org.apache.flink.metrics.prometheus.PrometheusReporterFactory"
+    metrics.reporter.prom.port: "9249"
+    {{- range $k, $v := $f.extraConfig }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  podTemplate:
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: pod-template
+      {{- if and .Values.metrics.enabled .Values.metrics.serviceMonitor.enabled }}
+      labels:
+        {{- include "flowfleet.selectorLabels" (list . "flink") | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: flink-main-container
+          ports:
+            - { name: metrics, containerPort: 9249 }
+          envFrom:
+            - configMapRef: { name: {{ include "flowfleet.envConfigMapName" . }} }
+            - secretRef: { name: {{ include "flowfleet.secretName" . }} }
+          {{- if eq $f.storage.type "pvc" }}
+          volumeMounts:
+            - { name: flink-data, mountPath: /flink-data }
+          {{- end }}
+      {{- if eq $f.storage.type "pvc" }}
+      volumes:
+        - name: flink-data
+          persistentVolumeClaim:
+            claimName: {{ include "flowfleet.component.fullname" (list . "flink-data") }}
+      {{- end }}
+  jobManager:
+    replicas: {{ $f.jobManager.replicas }}
+    resource:
+      cpu: {{ $f.jobManager.resource.cpu }}
+      memory: {{ $f.jobManager.resource.memory | quote }}
+  taskManager:
+    resource:
+      cpu: {{ $f.taskManager.resource.cpu }}
+      memory: {{ $f.taskManager.resource.memory | quote }}
+{{- if and .Values.metrics.enabled .Values.metrics.serviceMonitor.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ include "flowfleet.component.fullname" (list . "flink") }}
+  labels:
+    {{- include "flowfleet.componentLabels" (list . "flink") | nindent 4 }}
+    {{- with .Values.metrics.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "flowfleet.selectorLabels" (list . "flink") | nindent 6 }}
+  podMetricsEndpoints:
+    - port: metrics
+      interval: {{ .Values.metrics.serviceMonitor.interval }}
+{{- end }}
+{{- end }}

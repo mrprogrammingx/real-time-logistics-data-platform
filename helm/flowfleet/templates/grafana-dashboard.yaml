@@ -1,0 +1,19 @@
+{{- if and .Values.metrics.enabled .Values.metrics.grafanaDashboard.enabled }}
+{{- /*
+The Phase 6 Flink dashboard, shipped as a ConfigMap the Grafana sidecar
+(kube-prometheus-stack: grafana.sidecar.dashboards.enabled) auto-imports.
+Kept in sync with monitoring/grafana/dashboards/flink.json by `make helm-sync`.
+*/ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "flowfleet.component.fullname" (list . "flink-dashboard") }}
+  labels:
+    {{- include "flowfleet.labels" . | nindent 4 }}
+    {{- with .Values.metrics.grafanaDashboard.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+data:
+  flowfleet-flink.json: |-
+{{ .Files.Get "files/dashboards/flink.json" | indent 4 }}
+{{- end }}

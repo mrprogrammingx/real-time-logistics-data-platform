@@ -1,0 +1,69 @@
+{{- if .Values.kafkaConnect.enabled }}
+{{- $name := include "flowfleet.component.fullname" (list . "kafka-connect") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels: {{- include "flowfleet.componentLabels" (list . "kafka-connect") | nindent 4 }}
+spec:
+  ports:
+    - { name: rest, port: 8083, targetPort: rest }
+  selector: {{- include "flowfleet.selectorLabels" (list . "kafka-connect") | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels: {{- include "flowfleet.componentLabels" (list . "kafka-connect") | nindent 4 }}
+spec:
+  replicas: {{ .Values.kafkaConnect.replicas }}
+  selector:
+    matchLabels: {{- include "flowfleet.selectorLabels" (list . "kafka-connect") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "flowfleet.selectorLabels" (list . "kafka-connect") | nindent 8 }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: kafka-connect
+          image: {{ include "flowfleet.image" (list . .Values.kafkaConnect.image) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: rest, containerPort: 8083 }
+          env:
+            - name: CONNECT_BOOTSTRAP_SERVERS
+              value: "{{ include "flowfleet.kafkaHeadless" . }}:9092"
+            - name: CONNECT_GROUP_ID
+              value: "flowfleet-connect"
+            - name: CONNECT_CONFIG_STORAGE_TOPIC
+              value: "_connect-configs"
+            - name: CONNECT_OFFSET_STORAGE_TOPIC
+              value: "_connect-offsets"
+            - name: CONNECT_STATUS_STORAGE_TOPIC
+              value: "_connect-status"
+            - name: CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR
+              value: "1"
+            - name: CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR
+              value: "1"
+            - name: CONNECT_STATUS_STORAGE_REPLICATION_FACTOR
+              value: "1"
+            - name: CONNECT_KEY_CONVERTER
+              value: "org.apache.kafka.connect.storage.StringConverter"
+            - name: CONNECT_VALUE_CONVERTER
+              value: "org.apache.kafka.connect.json.JsonConverter"
+            - name: CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE
+              value: "false"
+            - name: CONNECT_REST_ADVERTISED_HOST_NAME
+              value: {{ $name | quote }}
+            - name: CONNECT_PLUGIN_PATH
+              value: "/usr/share/java,/usr/share/confluent-hub-components"
+          readinessProbe:
+            httpGet: { path: /connectors, port: rest }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources: {{- toYaml .Values.kafkaConnect.resources | nindent 12 }}
+      {{- include "flowfleet.scheduling" . | nindent 6 }}
+{{- end }}

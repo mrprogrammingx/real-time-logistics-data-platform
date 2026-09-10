@@ -48,3 +48,49 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build the ${{ matrix.name }} image (no push)
         run: docker build -f ${{ matrix.dockerfile }} -t flowfleet/${{ matrix.name }}:ci .
+
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      - name: helm lint
+        run: helm lint helm/flowfleet
+
+      - name: Chart files are in sync with their sources
+        run: |
+          make helm-sync
+          git diff --exit-code -- helm/flowfleet/files \
+            || { echo "::error::helm/flowfleet/files is stale — run 'make helm-sync' and commit"; exit 1; }
+
+      - name: Install kubeconform
+        run: |
+          curl -sSL -o /tmp/kc.tgz https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
+          tar -xzf /tmp/kc.tgz -C /usr/local/bin kubeconform
+
+      - name: Render + validate the chart (default and kind values)
+        env:
+          # CRD schemas for FlinkDeployment / FlinkSessionJob / ServiceMonitor / PodMonitor.
+          CRD: https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
+        run: |
+          for vf in "" "-f helm/flowfleet/values-kind.yaml"; do
+            echo "::group::helm template $vf"
+            helm template flowfleet helm/flowfleet -n flowfleet $vf \
+              | kubeconform -strict -summary -verbose \
+                  -schema-location default -schema-location "$CRD" \
+                  -ignore-missing-schemas
+            echo "::endgroup::"
+          done
+
+      - name: Validate the Argo CD manifests
+        env:
+          CRD: https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
+        run: |
+          kubeconform -strict -summary \
+            -schema-location default -schema-location "$CRD" \
+            -ignore-missing-schemas \
+            argocd/

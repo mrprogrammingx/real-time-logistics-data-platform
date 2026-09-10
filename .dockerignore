@@ -10,6 +10,9 @@ docs/
 architecture/
 database/
 monitoring/
+helm/
+argocd/
+k8s/
 load-testing/
 scripts/
 data/

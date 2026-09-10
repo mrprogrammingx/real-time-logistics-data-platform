@@ -8,8 +8,8 @@ MVP ──────────────► PRODUCTION ──────�
 Postgres + Kafka    state / windows          Kubernetes           load testing
 CDC                 watermarks / timers      Helm                 tuning
 Flink               idempotency / DLQ        Flink K8s Operator   failure tests
-ClickHouse          checkpoints              Prometheus/Grafana   autoscaling
-                                             ArgoCD
+ClickHouse          checkpoints / recovery   ArgoCD               autoscaling
+                    Prometheus/Grafana
 ```
 
 | Phase | Focus | Key deliverable | Notes |
@@ -20,7 +20,7 @@ ClickHouse          checkpoints              Prometheus/Grafana   autoscaling
 | **4 ✅** | Flink core | `flink/` module (Java 17 / Flink 1.20): `DriverStateJob` (keyed state + event-time timer), `DriverSpeedJob` (tumbling event-time windows + late-data side output), `GeofenceJob` (`KeyedBroadcastProcessFunction` + JTS), `AnomalyJob` (timers). Session cluster in compose, `make flink-*`, 14 harness/MiniCluster tests | done |
 | **5 ✅** | Production sinks | `TimescaleSinkJob` (`driver.state` + `driver.speed-windows` → Timescale hypertables, `ON CONFLICT DO NOTHING`), `ClickHouseSinkJob` (`geofence-events` + `alerts` → `ReplacingMergeTree(event_id)`), batched/retrying `JdbcSink`, `TimescaleSinkIT` + `ClickHouseSinkIT` proving replay-idempotency. BigQuery + sink-DLQ deferred | [`idempotency.md`](../architecture/idempotency.md) |
 | **6 ✅** | Failure engineering | `ResilientLocationDeserializer` + `LocationIngest` (poison msg → DLQ, never a job failure), `WatermarkLatenessIT` (late data → side output), `SlowMap` + `scripts/chaos.sh` (kill-TM / slow-sink / malformed / duplicate), Prometheus + Grafana (Flink metrics), `docs/experiments/phase-6-chaos.md` | [`failure-recovery.md`](../architecture/failure-recovery.md) |
-| **7** | Kubernetes + observability | Helm charts, Flink K8s Operator (`FlinkDeployment`/`FlinkSessionJob`), ArgoCD, Prometheus + Grafana dashboards (lag, checkpoint, backpressure, state size) | |
+| **7 ✅** | Kubernetes | `helm/flowfleet/` (umbrella chart, `values-kind.yaml`, CI renders + kubeconform), Flink K8s Operator session `FlinkDeployment` + 6 `FlinkSessionJob`s (`upgradeMode: savepoint`), in-cluster jar artifact server, `argocd/` app-of-apps with sync waves, `k8s/` + `scripts/k8s.sh` (kind), savepoint-upgrade experiment | [`deployment.md`](../architecture/deployment.md) |
 | **8** | Load + optimization | `location-generator` 1k→10k→25k→50k events/s, record throughput / p50-p99 / lag / checkpoint duration, then tune + autoscale | numbers to quote in interviews |
 
 ## `location-generator` (built Phase 2, scales in Phase 8)
