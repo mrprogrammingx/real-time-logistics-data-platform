@@ -12,7 +12,7 @@ argocd/             app-of-apps: Flink Operator (wave -2) -> kube-prometheus-sta
                     (wave -1) -> flowfleet chart (wave 0)
 k8s/operators/      Helm values for the Flink Kubernetes Operator
 k8s/monitoring/     Helm values for kube-prometheus-stack
-k8s/kind-cluster.yaml   local single-node cluster with host-port mappings
+k8s/kind-cluster.yaml   local single-node cluster (reach services via port-forward)
 scripts/k8s.sh      kind up/down, build+load images, operators, deploy, savepoint demo
 ```
 

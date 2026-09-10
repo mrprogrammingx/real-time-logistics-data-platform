@@ -76,15 +76,19 @@ spec:
               value: "false"
             - name: KAFKA_LOG_DIRS
               value: "/var/lib/kafka/data"
+          startupProbe:
+            exec: { command: ["bash", "-c", "kafka-broker-api-versions --bootstrap-server localhost:9092"] }
+            periodSeconds: 10
+            failureThreshold: 30            # up to 5 min for a cold KRaft format + start
           readinessProbe:
             exec: { command: ["bash", "-c", "kafka-broker-api-versions --bootstrap-server localhost:9092"] }
-            initialDelaySeconds: 20
             periodSeconds: 10
             timeoutSeconds: 10
           livenessProbe:
             tcpSocket: { port: broker }
             initialDelaySeconds: 30
             periodSeconds: 15
+            failureThreshold: 6
           resources: {{- toYaml .Values.kafka.resources | nindent 12 }}
           volumeMounts:
             - { name: data, mountPath: /var/lib/kafka/data }

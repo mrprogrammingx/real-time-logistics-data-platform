@@ -1,6 +1,9 @@
 {{- if .Values.flink.enabled }}
 {{- $f := .Values.flink }}
 {{- $sessionName := include "flowfleet.component.fullname" (list . "session") }}
+{{- if and $f.highAvailability.enabled (eq $f.storage.type "pvc") (gt (int $f.jobManager.replicas) 1) }}
+{{- fail "flink: HA with jobManager.replicas>1 needs shared storage — set flink.storage.type=s3 (a ReadWriteOnce PVC can't back multiple JobManagers)." }}
+{{- end }}
 {{- /* Storage roots for checkpoints / savepoints / HA metadata. */ -}}
 {{- $root := "" }}
 {{- if eq $f.storage.type "s3" }}

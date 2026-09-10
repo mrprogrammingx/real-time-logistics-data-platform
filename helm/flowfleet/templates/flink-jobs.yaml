@@ -2,7 +2,11 @@
 {{- $top := . }}
 {{- $f := .Values.flink }}
 {{- $sessionName := include "flowfleet.component.fullname" (list . "session") }}
-{{- $jarUri := $f.jarURI | default (printf "http://%s/flowfleet-flink-jobs.jar" (include "flowfleet.component.fullname" (list . "flink-artifacts"))) }}
+{{- /*
+The operator fetches the jar on its OWN pod (in the flink-operator namespace), so
+the URI must be a fully-qualified cross-namespace service name, not a bare one.
+*/ -}}
+{{- $jarUri := $f.jarURI | default (printf "http://%s.%s.svc.cluster.local/flowfleet-flink-jobs.jar" (include "flowfleet.component.fullname" (list . "flink-artifacts")) .Release.Namespace) }}
 {{- /*
 One FlinkSessionJob per entry in flink.jobs, all sharing the session cluster.
 The operator fetches the jar from jarURI (a remote URI — see flink-artifacts.yaml

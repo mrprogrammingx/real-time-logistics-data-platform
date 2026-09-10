@@ -42,14 +42,17 @@ spec:
               value: "PLAINTEXT://{{ include "flowfleet.kafkaHeadless" . }}:9092"
             - name: SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY_LEVEL
               value: {{ .Values.schemaRegistry.compatibilityLevel | quote }}
+          startupProbe:
+            httpGet: { path: /subjects, port: http }
+            periodSeconds: 10
+            failureThreshold: 30           # waits out a slow Kafka
           readinessProbe:
             httpGet: { path: /subjects, port: http }
-            initialDelaySeconds: 20
             periodSeconds: 10
           livenessProbe:
             httpGet: { path: /, port: http }
-            initialDelaySeconds: 40
             periodSeconds: 15
+            failureThreshold: 6
           resources: {{- toYaml .Values.schemaRegistry.resources | nindent 12 }}
       {{- include "flowfleet.scheduling" . | nindent 6 }}
 {{- end }}

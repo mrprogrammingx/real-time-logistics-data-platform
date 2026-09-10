@@ -15,6 +15,9 @@ public final class RatePlan {
     /** Events to emit on a tick of {@code tickMillis} at {@code ratePerSecond}. Never negative. */
     public int eventsThisTick(double ratePerSecond, long tickMillis) {
         double want = Math.max(0.0, ratePerSecond) * tickMillis / 1000.0 + carry;
+        // Guard the int cast against an absurd rate; the caller caps the actual
+        // window at the fleet size anyway.
+        want = Math.min(want, Integer.MAX_VALUE);
         int n = (int) Math.floor(want);
         carry = want - n;
         return n;
