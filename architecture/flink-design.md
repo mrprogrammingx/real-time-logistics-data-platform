@@ -100,7 +100,8 @@ state.backend                     = rocksdb (incremental)
 
 * **Checkpoint** = automatic, for failure recovery.
 * **Savepoint** = manual, for upgrades / rescale (Flink K8s Operator triggers one before a
-  job upgrade, restores from it after).
+  job upgrade, restores from it after — see [`deployment.md`](deployment.md) and the
+  Phase 7 savepoint-upgrade experiment).
 * Phase 6 experiment: `kill -9` a TaskManager mid-processing → job restarts from last
   checkpoint → verify no lost updates and (with idempotent sinks) no visible duplicates.
 

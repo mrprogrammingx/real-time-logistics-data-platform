@@ -1,0 +1,21 @@
+apiVersion: v2
+name: flowfleet
+description: >-
+  FlowFleet real-time logistics platform — Postgres/PostGIS, Kafka (KRaft),
+  Schema Registry, the Spring services, TimescaleDB + ClickHouse, and the Flink
+  jobs deployed through the Flink Kubernetes Operator.
+type: application
+version: 0.7.0
+appVersion: "0.1.0"
+keywords:
+  - streaming
+  - flink
+  - kafka
+  - cdc
+maintainers:
+  - name: FlowFleet
+home: https://github.com/mrprogrammingx/real-time-logistics-data-platform
+# No vendored subcharts: every component is a first-party template so the chart
+# lints and renders offline (CI runs `helm template | kubeconform` with no repo
+# access). The Flink Kubernetes Operator and kube-prometheus-stack are installed
+# separately (see k8s/ and argocd/).

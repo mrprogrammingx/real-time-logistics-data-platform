@@ -1,0 +1,32 @@
+# Helm values for the Flink Kubernetes Operator (apache/flink-kubernetes-operator).
+# Used by scripts/k8s.sh and mirrored inline in argocd/applications/00-flink-operator.yaml.
+#
+#   helm repo add flink-operator https://downloads.apache.org/flink/flink-kubernetes-operator-1.10.0/
+#   helm upgrade --install flink-kubernetes-operator flink-operator/flink-kubernetes-operator \
+#     -n flink-operator --create-namespace -f k8s/operators/flink-operator-values.yaml
+
+# Only reconcile CRs in the flowfleet namespace.
+watchNamespaces:
+  - flowfleet
+
+operatorPod:
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "1", memory: 1Gi }
+
+# Operator self-metrics on :9999 (a PodMonitor in the operator chart picks these up
+# if metrics.enable=true).
+metrics:
+  port: 9999
+
+defaultConfiguration:
+  create: true
+  append: true
+  flink-conf.yaml: |
+    kubernetes.operator.metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+    kubernetes.operator.metrics.reporter.prom.port: 9999
+    kubernetes.operator.reconcile.interval: 15 s
+    kubernetes.operator.savepoint.history.max.age: 24 h
+    kubernetes.operator.savepoint.history.max.count: 10
+    # Periodic savepoints as a backstop (the upgrade flow triggers its own).
+    kubernetes.operator.periodic.savepoint.interval: 30 m

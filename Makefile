@@ -13,7 +13,7 @@ COMPOSE := docker compose
 
 .PHONY: help
 help: ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
 ## ----- build & test -----------------------------------------------------------
@@ -184,6 +184,50 @@ chaos-metrics: ## Dump Flink checkpoint / backpressure / restart metrics for a j
 .PHONY: grafana
 grafana: ## Open the Grafana Flink dashboard
 	@echo "http://localhost:13000/d/flowfleet-flink  (anonymous viewer; admin/flowfleet)"
+
+## ----- kubernetes (phase 7) -----------------------------------------------
+
+.PHONY: helm-sync
+helm-sync: ## Copy the canonical DB init SQL + Grafana dashboard into the Helm chart
+	cp database/timescaledb/init.sql helm/flowfleet/files/db/timescaledb-init.sql
+	cp database/clickhouse/init.sql  helm/flowfleet/files/db/clickhouse-init.sql
+	cp monitoring/grafana/dashboards/flink.json helm/flowfleet/files/dashboards/flink.json
+	@echo "chart files synced — commit if changed"
+
+.PHONY: helm-lint
+helm-lint: ## helm lint + render the chart with both value sets
+	helm lint helm/flowfleet
+	helm template flowfleet helm/flowfleet -n flowfleet >/dev/null
+	helm template flowfleet helm/flowfleet -n flowfleet -f helm/flowfleet/values-kind.yaml >/dev/null
+	@echo "chart OK"
+
+.PHONY: k8s-up
+k8s-up: ## kind create + operators + build/load images + helm install (see k8s/README.md)
+	./scripts/k8s.sh up
+
+.PHONY: k8s-deploy
+k8s-deploy: ## helm upgrade --install into an existing cluster
+	./scripts/k8s.sh deploy
+
+.PHONY: k8s-images
+k8s-images: ## Rebuild the 5 images and load them into the kind cluster
+	./scripts/k8s.sh images
+
+.PHONY: k8s-jobs
+k8s-jobs: ## FlinkDeployment / FlinkSessionJob status
+	./scripts/k8s.sh jobs
+
+.PHONY: k8s-ui
+k8s-ui: ## Port-forward the Flink UI (localhost:8081)
+	./scripts/k8s.sh ui
+
+.PHONY: k8s-savepoint
+k8s-savepoint: ## Trigger a savepoint for one job:  make k8s-savepoint JOB=driver-state
+	./scripts/k8s.sh savepoint $(JOB)
+
+.PHONY: k8s-down
+k8s-down: ## Delete the kind cluster
+	./scripts/k8s.sh down
 
 ## ----- demo ---------------------------------------------------------------
 

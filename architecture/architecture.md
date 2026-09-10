@@ -23,7 +23,7 @@ with very different read patterns.
 | 4 | Stream processing | Apache Flink (Java) | Stateful enrichment, windows, timers, geofencing, anomaly detection. |
 | 5 | Serving stores | TimescaleDB, ClickHouse, BigQuery | Operational time-series, interactive analytics, warehouse. |
 | 6 | Observability | Prometheus + Grafana | Lag, throughput, checkpoint health, backpressure. |
-| 7 | Platform | Kubernetes, Flink K8s Operator, Helm, ArgoCD | Deploy, scale, upgrade with savepoints, GitOps. |
+| 7 | Platform | Kubernetes, Flink K8s Operator, Helm, ArgoCD | Deploy, scale, upgrade with savepoints, GitOps. See [`deployment.md`](deployment.md). |
 
 ## Data flow
 

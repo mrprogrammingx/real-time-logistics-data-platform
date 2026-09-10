@@ -1,0 +1,51 @@
+# Wave 0: the FlowFleet platform chart (datastores, Kafka, the Spring services,
+# the Flink session cluster + jobs). Depends on the Flink Operator CRDs (wave -2)
+# and the Prometheus Operator CRDs (wave -1).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: flowfleet
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: flowfleet
+  source:
+    repoURL: https://github.com/mrprogrammingx/real-time-logistics-data-platform
+    targetRevision: main
+    path: helm/flowfleet
+    helm:
+      releaseName: flowfleet
+      valueFiles:
+        - values.yaml
+      # Registry the CI job pushes images to; override per environment.
+      parameters:
+        - name: image.registry
+          value: ghcr.io/mrprogrammingx
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: flowfleet
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # StatefulSet volumeClaimTemplates are immutable — don't fight them.
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 5
+      backoff: { duration: 10s, factor: 2, maxDuration: 3m }
+  # The operator rewrites FlinkDeployment/FlinkSessionJob status and spec
+  # (savepoint history, job id); ignore those so Argo doesn't flap.
+  ignoreDifferences:
+    - group: flink.apache.org
+      kind: FlinkDeployment
+      jsonPointers:
+        - /spec/flinkConfiguration/$internal.flink.version
+    - group: flink.apache.org
+      kind: FlinkSessionJob
+      jqPathExpressions:
+        - .spec.job.savepointTriggerNonce

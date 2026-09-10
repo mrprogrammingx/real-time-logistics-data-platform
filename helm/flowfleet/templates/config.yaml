@@ -1,0 +1,44 @@
+{{- /*
+Shared, non-secret connection coordinates. One ConfigMap consumed by every
+component (envFrom) so Kafka / Schema Registry / the databases are repointed in
+a single place.
+*/ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "flowfleet.envConfigMapName" . }}
+  labels:
+    {{- include "flowfleet.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+data:
+  {{- $kafka := .Values.env.kafkaBootstrap | default (printf "%s:9092" (include "flowfleet.kafkaHeadless" .)) }}
+  {{- $sr := .Values.env.schemaRegistryUrl | default (printf "http://%s:8081" (include "flowfleet.component.fullname" (list . "schema-registry"))) }}
+  KAFKA_BOOTSTRAP: {{ $kafka | quote }}
+  SCHEMA_REGISTRY_URL: {{ $sr | quote }}
+  DB_HOST: {{ include "flowfleet.postgresHost" . | quote }}
+  DB_PORT: "5432"
+  DB_NAME: {{ .Values.postgres.database | quote }}
+  TIMESCALE_URL: "jdbc:postgresql://{{ include "flowfleet.timescaleHost" . }}:5432/{{ .Values.timescaledb.database }}"
+  CLICKHOUSE_URL: "jdbc:clickhouse://{{ include "flowfleet.clickhouseHost" . }}:8123/{{ .Values.clickhouse.database }}"
+---
+{{- if .Values.secret.create }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "flowfleet.secretName" . }}
+  labels:
+    {{- include "flowfleet.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  DB_USER: {{ .Values.secret.postgresUser | quote }}
+  DB_PASSWORD: {{ .Values.secret.postgresPassword | quote }}
+  POSTGRES_USER: {{ .Values.secret.postgresUser | quote }}
+  POSTGRES_PASSWORD: {{ .Values.secret.postgresPassword | quote }}
+  TIMESCALE_USER: {{ .Values.secret.timescaleUser | quote }}
+  TIMESCALE_PASSWORD: {{ .Values.secret.timescalePassword | quote }}
+  CLICKHOUSE_USER: {{ .Values.secret.clickhouseUser | quote }}
+  CLICKHOUSE_PASSWORD: {{ .Values.secret.clickhousePassword | quote }}
+{{- end }}

@@ -1,0 +1,73 @@
+{{- if .Values.locationConsumer.enabled }}
+{{- $name := include "flowfleet.component.fullname" (list . "location-consumer") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels: {{- include "flowfleet.componentLabels" (list . "location-consumer") | nindent 4 }}
+spec:
+  ports:
+    - { name: http, port: 8091, targetPort: http }
+  selector: {{- include "flowfleet.selectorLabels" (list . "location-consumer") | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels: {{- include "flowfleet.componentLabels" (list . "location-consumer") | nindent 4 }}
+spec:
+  # Scale this to watch a consumer-group rebalance (Phase 2 experiment) in-cluster.
+  replicas: {{ .Values.locationConsumer.replicas }}
+  selector:
+    matchLabels: {{- include "flowfleet.selectorLabels" (list . "location-consumer") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "flowfleet.selectorLabels" (list . "location-consumer") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/config.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: location-consumer
+          image: {{ include "flowfleet.image" (list . .Values.locationConsumer.image) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 8091 }
+          envFrom:
+            - configMapRef: { name: {{ include "flowfleet.envConfigMapName" . }} }
+          env:
+            - name: SERVER_PORT
+              value: "8091"
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: http }
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          resources: {{- toYaml .Values.locationConsumer.resources | nindent 12 }}
+      {{- include "flowfleet.scheduling" . | nindent 6 }}
+{{- if and .Values.metrics.enabled .Values.metrics.serviceMonitor.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "flowfleet.componentLabels" (list . "location-consumer") | nindent 4 }}
+    {{- with .Values.metrics.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels: {{- include "flowfleet.selectorLabels" (list . "location-consumer") | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /actuator/prometheus
+      interval: {{ .Values.metrics.serviceMonitor.interval }}
+{{- end }}
+{{- end }}

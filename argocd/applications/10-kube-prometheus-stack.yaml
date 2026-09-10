@@ -1,0 +1,52 @@
+# Wave -1: Prometheus Operator + Prometheus + Grafana. Provides the
+# ServiceMonitor/PodMonitor CRDs the flowfleet chart's metrics.* templates emit,
+# and a Grafana that auto-imports the FlowFleet dashboard ConfigMap.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: flowfleet
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: 66.3.1
+    helm:
+      releaseName: kube-prometheus-stack
+      values: |
+        fullnameOverride: kube-prometheus-stack
+        prometheus:
+          prometheusSpec:
+            retention: 6h
+            # Watch ServiceMonitors/PodMonitors in every namespace, not just those
+            # carrying the release label.
+            serviceMonitorSelectorNilUsesHelmValues: false
+            podMonitorSelectorNilUsesHelmValues: false
+            resources:
+              requests: { cpu: 250m, memory: 1Gi }
+        grafana:
+          adminPassword: flowfleet
+          defaultDashboardsEnabled: true
+          sidecar:
+            dashboards:
+              enabled: true
+              searchNamespace: ALL
+              label: grafana_dashboard
+        # kind has no real kubelet cadvisor certs — relax if scraping fails.
+        kubeControllerManager: { enabled: false }
+        kubeScheduler: { enabled: false }
+        kubeEtcd: { enabled: false }
+        kubeProxy: { enabled: false }
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

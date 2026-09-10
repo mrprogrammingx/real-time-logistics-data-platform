@@ -1,0 +1,39 @@
+{{- if .Values.flink.enabled }}
+{{- $top := . }}
+{{- $f := .Values.flink }}
+{{- $sessionName := include "flowfleet.component.fullname" (list . "session") }}
+{{- $jarUri := $f.jarURI | default (printf "http://%s/flowfleet-flink-jobs.jar" (include "flowfleet.component.fullname" (list . "flink-artifacts"))) }}
+{{- /*
+One FlinkSessionJob per entry in flink.jobs, all sharing the session cluster.
+The operator fetches the jar from jarURI (a remote URI — see flink-artifacts.yaml
+for why local:// doesn't work for session jobs) and submits it. Kafka / DB
+coordinates come from the session pod's envFrom (flink-session.yaml).
+
+upgradeMode (session jobs support stateless | savepoint, not last-state):
+  savepoint  - on a spec change the operator runs stop-with-savepoint, then
+               restores from it. Clean, exactly-once, needs the job healthy and
+               state.savepoints.dir set on the FlinkDeployment.
+  stateless  - redeploy from scratch, no state carried over.
+*/ -}}
+{{- range $jobName, $jobCfg := $f.jobs }}
+---
+apiVersion: flink.apache.org/v1beta1
+kind: FlinkSessionJob
+metadata:
+  name: {{ include "flowfleet.component.fullname" (list $top $jobName) }}
+  labels:
+    {{- include "flowfleet.componentLabels" (list $top "flink") | nindent 4 }}
+    flowfleet.io/flink-job: {{ $jobName }}
+  annotations:
+    # Bump to force a redeploy without a spec change (e.g. after a new image).
+    flowfleet.io/restart-nonce: "0"
+spec:
+  deploymentName: {{ $sessionName }}
+  job:
+    jarURI: {{ $jarUri }}
+    entryClass: {{ $jobCfg.entryClass | required (printf "flink.jobs.%s.entryClass is required" $jobName) }}
+    parallelism: {{ $jobCfg.parallelism | default 2 }}
+    upgradeMode: {{ $f.upgradeMode }}
+    state: running
+{{- end }}
+{{- end }}

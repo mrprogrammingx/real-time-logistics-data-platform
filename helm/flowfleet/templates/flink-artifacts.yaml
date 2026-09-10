@@ -1,0 +1,64 @@
+{{- if and .Values.flink.enabled .Values.flink.artifactServer.enabled }}
+{{- $name := include "flowfleet.component.fullname" (list . "flink-artifacts") }}
+{{- /*
+FlinkSessionJob downloads its jar from a remote URI (the operator uses Flink's
+filesystem layer — local:// would resolve on the operator pod, not our image).
+This tiny server copies the baked jar out of the flowfleet/flink image once and
+serves it in-cluster, so jarURI is http://<this-svc>/flowfleet-flink-jobs.jar.
+The equivalent in a real cluster is S3/GCS or a Maven repo URL.
+*/ -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels: {{- include "flowfleet.componentLabels" (list . "flink-artifacts") | nindent 4 }}
+spec:
+  ports:
+    - { name: http, port: 80, targetPort: http }
+  selector: {{- include "flowfleet.selectorLabels" (list . "flink-artifacts") | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels: {{- include "flowfleet.componentLabels" (list . "flink-artifacts") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {{- include "flowfleet.selectorLabels" (list . "flink-artifacts") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "flowfleet.selectorLabels" (list . "flink-artifacts") | nindent 8 }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: extract-jar
+          image: {{ include "flowfleet.image" (list . .Values.flink.image) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["sh", "-c", "cp /opt/flink/usrlib/flowfleet-flink-jobs.jar /www/ && ls -l /www"]
+          volumeMounts:
+            - { name: www, mountPath: /www }
+      containers:
+        - name: httpd
+          image: {{ include "flowfleet.image" (list . .Values.flink.artifactServer.image) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["httpd", "-f", "-v", "-p", "8000", "-h", "/www"]
+          ports:
+            - { name: http, containerPort: 8000 }
+          readinessProbe:
+            httpGet: { path: /flowfleet-flink-jobs.jar, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+          volumeMounts:
+            - { name: www, mountPath: /www }
+      volumes:
+        - name: www
+          emptyDir: {}
+      {{- include "flowfleet.scheduling" . | nindent 6 }}
+{{- end }}

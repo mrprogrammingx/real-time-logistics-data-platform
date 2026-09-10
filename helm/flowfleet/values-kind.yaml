@@ -1,0 +1,88 @@
+# Local kind / minikube overrides:  helm install flowfleet ./helm/flowfleet -f helm/flowfleet/values-kind.yaml
+#
+# Small resource footprint, images pulled from the local daemon (kind load
+# docker-image ...), no external Secret manager, PVC storage on the single node.
+
+image:
+  registry: ""
+  pullPolicy: IfNotPresent   # images are `kind load`-ed, never pulled
+
+postgres:
+  persistence: { size: 1Gi }
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+kafka:
+  persistence: { size: 2Gi }
+  resources:
+    requests: { cpu: 200m, memory: 512Mi }
+    limits: { cpu: "1", memory: 1Gi }
+
+schemaRegistry:
+  resources:
+    requests: { cpu: 50m, memory: 320Mi }
+    limits: { cpu: 300m, memory: 512Mi }
+
+timescaledb:
+  persistence: { size: 2Gi }
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+clickhouse:
+  persistence: { size: 2Gi }
+  resources:
+    requests: { cpu: 100m, memory: 512Mi }
+    limits: { cpu: "1", memory: 1Gi }
+
+api:
+  replicas: 1
+  resources:
+    requests: { cpu: 100m, memory: 384Mi }
+    limits: { cpu: 500m, memory: 640Mi }
+  pdb:
+    enabled: false
+
+locationGenerator:
+  drivers: 50
+  resources:
+    requests: { cpu: 100m, memory: 384Mi }
+    limits: { cpu: 500m, memory: 640Mi }
+
+locationConsumer:
+  replicas: 1
+  resources:
+    requests: { cpu: 50m, memory: 256Mi }
+    limits: { cpu: 300m, memory: 384Mi }
+
+flink:
+  jobManager:
+    resource:
+      cpu: 0.5
+      memory: "1200m"
+  taskManager:
+    replicas: 1
+    slotsPerTaskManager: 6
+    resource:
+      cpu: 1
+      memory: "2048m"
+  storage:
+    type: pvc
+    pvc:
+      size: 5Gi
+  # 4 processing jobs + 2 sink jobs * parallelism 1 = 6 slots on one TaskManager.
+  jobs:
+    driver-state: { parallelism: 1 }
+    driver-speed: { parallelism: 1 }
+    geofence: { parallelism: 1 }
+    anomaly: { parallelism: 1 }
+    timescale-sink: { parallelism: 1 }
+    clickhouse-sink: { parallelism: 1 }
+
+metrics:
+  # kind clusters usually don't have kube-prometheus-stack; flip on if you install it.
+  serviceMonitor:
+    enabled: false
+  grafanaDashboard:
+    enabled: false

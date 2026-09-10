@@ -1,0 +1,89 @@
+{{- if .Values.timescaledb.enabled }}
+{{- $name := include "flowfleet.component.fullname" (list . "timescaledb") }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-init
+  labels: {{- include "flowfleet.componentLabels" (list . "timescaledb") | nindent 4 }}
+data:
+  # Kept in sync with database/timescaledb/init.sql by `make helm-sync` (CI guards it).
+  10-init.sql: |-
+{{ .Files.Get "files/db/timescaledb-init.sql" | indent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels: {{- include "flowfleet.componentLabels" (list . "timescaledb") | nindent 4 }}
+spec:
+  clusterIP: None
+  ports:
+    - { name: postgres, port: 5432, targetPort: postgres }
+  selector: {{- include "flowfleet.selectorLabels" (list . "timescaledb") | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels: {{- include "flowfleet.componentLabels" (list . "timescaledb") | nindent 4 }}
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels: {{- include "flowfleet.selectorLabels" (list . "timescaledb") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "flowfleet.selectorLabels" (list . "timescaledb") | nindent 8 }}
+      annotations:
+        checksum/init: {{ .Files.Get "files/db/timescaledb-init.sql" | sha256sum }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        fsGroup: 999
+      containers:
+        - name: timescaledb
+          image: {{ include "flowfleet.image" (list . .Values.timescaledb.image) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: postgres, containerPort: 5432 }
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.timescaledb.database | quote }}
+            - name: POSTGRES_USER
+              valueFrom: { secretKeyRef: { name: {{ include "flowfleet.secretName" . }}, key: TIMESCALE_USER } }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "flowfleet.secretName" . }}, key: TIMESCALE_PASSWORD } }
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", {{ .Values.secret.timescaleUser | quote }}, "-d", {{ .Values.timescaledb.database | quote }}] }
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources: {{- toYaml .Values.timescaledb.resources | nindent 12 }}
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+            - { name: init, mountPath: /docker-entrypoint-initdb.d }
+      volumes:
+        - name: init
+          configMap:
+            name: {{ $name }}-init
+      {{- include "flowfleet.scheduling" . | nindent 6 }}
+  {{- if .Values.timescaledb.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with .Values.timescaledb.persistence.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.timescaledb.persistence.size }}
+  {{- else }}
+        {{- fail "timescaledb.persistence.enabled=false is unsupported (init runs once)" }}
+  {{- end }}
+{{- end }}
