@@ -29,8 +29,8 @@ class LocationRoundTripIT extends AbstractRedpandaIT {
 
     private static GeneratorProperties props(int drivers) {
         return new GeneratorProperties(
-                drivers, Duration.ofSeconds(1), 1.0, 7L, true, true,
-                Topics.DRIVER_LOCATIONS, bootstrapServers(), schemaRegistryUrl());
+                drivers, Duration.ofSeconds(1), 1.0, 0.0, 7L, true, true,
+                Topics.DRIVER_LOCATIONS, 6, bootstrapServers(), schemaRegistryUrl());
     }
 
     @Test

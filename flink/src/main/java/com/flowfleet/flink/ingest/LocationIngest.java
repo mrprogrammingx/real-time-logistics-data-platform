@@ -4,6 +4,8 @@ import com.flowfleet.common.domain.GeoPoint;
 import com.flowfleet.events.avro.DriverLocation;
 import com.flowfleet.flink.Tags;
 import org.apache.flink.metrics.Counter;
+import org.apache.flink.metrics.Histogram;
+import org.apache.flink.runtime.metrics.DescriptiveStatisticsHistogram;
 import org.apache.flink.api.common.functions.OpenContext;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.util.Collector;
@@ -19,19 +21,25 @@ import org.apache.flink.util.Collector;
  *       with a reason.</li>
  * </ul>
  *
- * Everything else flows on. Two counters (`ingest.valid`, `ingest.dlq`) make the split
- * visible in Prometheus.
+ * Everything else flows on. Two counters (`ingest.valid`, `ingest.dlq`) plus an
+ * event-time-to-now latency histogram (`ingest.latencyMs`) make the split and the
+ * pipeline lag visible in Prometheus — the headline signals for the Phase 8 load test.
  */
 public class LocationIngest extends ProcessFunction<ParsedLocation, DriverLocation> {
 
+    /** Samples kept for the latency percentiles. ~10k ≈ a few seconds at load. */
+    private static final int LATENCY_WINDOW = 10_000;
+
     private transient Counter valid;
     private transient Counter dlq;
+    private transient Histogram latencyMs;
 
     @Override
     public void open(OpenContext ctx) {
         var group = getRuntimeContext().getMetricGroup().addGroup("flowfleet").addGroup("ingest");
         valid = group.counter("valid");
         dlq = group.counter("dlq");
+        latencyMs = group.histogram("latencyMs", new DescriptiveStatisticsHistogram(LATENCY_WINDOW));
     }
 
     @Override
@@ -48,7 +56,17 @@ public class LocationIngest extends ProcessFunction<ParsedLocation, DriverLocati
             return;
         }
         valid.inc();
+        latencyMs.update(latencyMillis(p.value, System.currentTimeMillis()));
         out.collect(p.value);
+    }
+
+    /**
+     * Milliseconds from the sample's event time to now. Clamped at 0: the device clock can
+     * be a hair ahead of the Flink TM clock, and a negative "latency" is meaningless noise.
+     */
+    static long latencyMillis(DriverLocation loc, long nowMillis) {
+        long delta = nowMillis - loc.getEventTime().toEpochMilli();
+        return delta < 0 ? 0 : delta;
     }
 
     static String validate(DriverLocation loc) {

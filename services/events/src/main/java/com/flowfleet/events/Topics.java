@@ -48,8 +48,18 @@ public final class Topics {
 
     /** Topics the local dev cluster should have. CDC topics are created by Debezium. */
     public static List<TopicSpec> local() {
+        return local(6);
+    }
+
+    /**
+     * Same as {@link #local()} but with an explicit partition count for
+     * {@code flowfleet.driver.locations} — the one topic worth widening for a load test
+     * (it caps Flink source parallelism). {@code driver.state} tracks it.
+     */
+    public static List<TopicSpec> local(int locationsPartitions) {
+        int p = locationsPartitions > 0 ? locationsPartitions : 6;
         return List.of(
-                new TopicSpec(DRIVER_LOCATIONS, 6, (short) 1,
+                new TopicSpec(DRIVER_LOCATIONS, p, (short) 1,
                         merge(TopicSpec.retention(Duration.ofHours(24)),
                               Map.of("cleanup.policy", "delete"))),
                 new TopicSpec(DRIVER_GEOFENCE_EVENTS, 3, (short) 1,
@@ -60,7 +70,7 @@ public final class Topics {
                         TopicSpec.retention(Duration.ofDays(30))),
                 new TopicSpec(DRIVER_LOCATIONS_DLQ, 3, (short) 1,
                         TopicSpec.retention(Duration.ofDays(14))),
-                new TopicSpec(DRIVER_STATE, 6, (short) 1,
+                new TopicSpec(DRIVER_STATE, p, (short) 1,
                         TopicSpec.retention(Duration.ofHours(24))),
                 new TopicSpec(DRIVER_SPEED_WINDOWS, 3, (short) 1,
                         TopicSpec.retention(Duration.ofDays(7))));

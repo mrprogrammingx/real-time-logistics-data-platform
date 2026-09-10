@@ -60,6 +60,26 @@
         { "expr": "sum(rate(flink_taskmanager_job_task_operator_flowfleet_ingest_valid[1m]))", "legendFormat": "valid" },
         { "expr": "sum(rate(flink_taskmanager_job_task_operator_flowfleet_ingest_dlq[1m]))", "legendFormat": "dlq" }
       ]
+    },
+    {
+      "type": "timeseries", "title": "Throughput — produced vs ingested vs target (Phase 8)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [
+        { "expr": "sum(rate(flowfleet_generator_sent_total[1m]))", "legendFormat": "produced" },
+        { "expr": "sum(rate(flink_taskmanager_job_task_operator_flowfleet_ingest_valid[1m]))", "legendFormat": "ingested" },
+        { "expr": "max(flowfleet_generator_target_rate)", "legendFormat": "target" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "End-to-end latency — event time → Flink ingest (Phase 8)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] },
+      "targets": [
+        { "expr": "max(flink_taskmanager_job_task_operator_flowfleet_ingest_latencyMs{quantile=\"0.5\"})", "legendFormat": "p50" },
+        { "expr": "max(flink_taskmanager_job_task_operator_flowfleet_ingest_latencyMs{quantile=\"0.95\"})", "legendFormat": "p95" },
+        { "expr": "max(flink_taskmanager_job_task_operator_flowfleet_ingest_latencyMs{quantile=\"0.99\"})", "legendFormat": "p99" }
+      ]
     }
   ]
 }

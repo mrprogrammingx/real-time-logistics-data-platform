@@ -21,7 +21,7 @@ ClickHouse          checkpoints / recovery   ArgoCD               autoscaling
 | **5 ✅** | Production sinks | `TimescaleSinkJob` (`driver.state` + `driver.speed-windows` → Timescale hypertables, `ON CONFLICT DO NOTHING`), `ClickHouseSinkJob` (`geofence-events` + `alerts` → `ReplacingMergeTree(event_id)`), batched/retrying `JdbcSink`, `TimescaleSinkIT` + `ClickHouseSinkIT` proving replay-idempotency. BigQuery + sink-DLQ deferred | [`idempotency.md`](../architecture/idempotency.md) |
 | **6 ✅** | Failure engineering | `ResilientLocationDeserializer` + `LocationIngest` (poison msg → DLQ, never a job failure), `WatermarkLatenessIT` (late data → side output), `SlowMap` + `scripts/chaos.sh` (kill-TM / slow-sink / malformed / duplicate), Prometheus + Grafana (Flink metrics), `docs/experiments/phase-6-chaos.md` | [`failure-recovery.md`](../architecture/failure-recovery.md) |
 | **7 ✅** | Kubernetes | `helm/flowfleet/` (umbrella chart, `values-kind.yaml`, CI renders + kubeconform), Flink K8s Operator session `FlinkDeployment` + 6 `FlinkSessionJob`s (`upgradeMode: savepoint`), in-cluster jar artifact server, `argocd/` app-of-apps with sync waves, `k8s/` + `scripts/k8s.sh` (kind), savepoint-upgrade experiment | [`deployment.md`](../architecture/deployment.md) |
-| **8** | Load + optimization | `location-generator` 1k→10k→25k→50k events/s, record throughput / p50-p99 / lag / checkpoint duration, then tune + autoscale | numbers to quote in interviews |
+| **8 ✅** | Load + optimization | generator **rate mode** + `RatePlan` + `POST /api/load/rate`; `flowfleet.ingest.latencyMs` histogram; `scripts/loadtest.sh` ramp 1k→50k sampling Prometheus → CSV; `docker-compose.load.yml` + `values-load.yaml` (24 partitions, TM×3/8 slots); Flink operator **autoscaler** + consumer **HPA**; tuning ladder | [`performance.md`](../architecture/performance.md) |
 
 ## `location-generator` (built Phase 2, scales in Phase 8)
 
@@ -29,4 +29,6 @@ Simulates N drivers each emitting ~1 GPS sample/s along a realistic route:
 `start → drive to restaurant → drive to customer → new job`. Not real drivers — synthetic
 haversine movement with plausible speed/heading, deterministic per seed. Phase 4 adds
 deliberately malformed samples (for the DLQ) and deliberately late ones (for watermarks).
-Phase 8 pushes it to 10k–50k events/s.
+Phase 8 adds a **rate mode** (`GENERATOR_TARGET_RATE` / `POST /api/load/rate`): a 100 ms
+tick emits exactly enough samples to hold a target events/second, advancing a rotating
+window over the fleet — up to ~50k ev/s from a 20k-driver pool.

@@ -10,10 +10,14 @@ flowfleet:
     drivers: ${GENERATOR_DRIVERS:200}
     tick-interval: ${GENERATOR_TICK:1s}
     speedup-factor: ${GENERATOR_SPEEDUP:1.0}
+    # Load-test mode: hold this many events/second (0 = legacy drivers ÷ tick).
+    # Change at runtime: POST /api/load/rate?value=25000
+    target-rate: ${GENERATOR_TARGET_RATE:0}
     seed: ${GENERATOR_SEED:42}
     enabled: ${GENERATOR_ENABLED:true}
     auto-create-topics: ${GENERATOR_AUTO_CREATE_TOPICS:true}
     topic: ${GENERATOR_TOPIC:flowfleet.driver.locations}
+    locations-partitions: ${GENERATOR_LOCATIONS_PARTITIONS:6}
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:19092}
     schema-registry-url: ${SCHEMA_REGISTRY_URL:http://localhost:18085}
 

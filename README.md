@@ -63,14 +63,42 @@ and a set of interview questions it lets you answer from experience.
 | **5** | Flink sinks → TimescaleDB + ClickHouse — batching, retries, idempotent writes | ✅ **done** |
 | **6** | Failure engineering — poison-message DLQ, late-data, checkpoint recovery, backpressure, Prometheus + Grafana | ✅ **done** |
 | **7** | Kubernetes — Helm chart, Flink Kubernetes Operator (`FlinkDeployment` + `FlinkSessionJob`, savepoint upgrades), Argo CD (app-of-apps) | ✅ **done** |
-| 8 | Load testing 1k→50k events/s, tuning, autoscaling | ⬜ next |
+| **8** | Load testing 1k→50k events/s — generator rate mode, end-to-end latency histogram, ramp harness, tuning ladder, Flink autoscaler + consumer HPA | ✅ **done** |
 
 Phase details and per-phase interview questions live in [`docs/`](docs/) and
 [`architecture/`](architecture/).
 
 ---
 
-## Phase 7 — what's here now
+## Phase 8 — what's here now
+
+**Push it to 50k events/second, find each ceiling, tune, autoscale.**
+
+* **Load, not a new tool** — the `location-generator` gains a *rate mode*: a
+  100 ms tick emits exactly enough samples to hold a target events/second
+  ([`RatePlan`](services/location-generator/src/main/java/com/flowfleet/generator/sim/RatePlan.java)
+  carries the fraction), rotating a window over the fleet. Change it live:
+  `POST /api/load/rate?value=25000` — no restart.
+* **End-to-end latency** — [`LocationIngest`](flink/src/main/java/com/flowfleet/flink/ingest/LocationIngest.java)
+  records event-time→now into a `DescriptiveStatisticsHistogram`
+  (`flowfleet.ingest.latencyMs`); Grafana gets p50/p95/p99 + a produced-vs-ingested-vs-target panel.
+* **Ramp harness** — [`scripts/loadtest.sh`](scripts/loadtest.sh) / `make load-ramp`
+  steps 1k→5k→10k→25k→50k, holds each, reads Prometheus (throughput, latency, lag,
+  busy/backpressure, checkpoint duration/size, restarts) → CSV + markdown table in
+  [`load-testing/results/`](load-testing/).
+* **Tuning** — [`docker-compose.load.yml`](docker-compose.load.yml) / `values-load.yaml`
+  (24 partitions, TaskManager ×3 / 8 slots, 20k-driver pool) and the bottleneck
+  ladder — source partitions → deserialize CPU → RocksDB → JDBC sink round-trips →
+  checkpoint size — in [`architecture/performance.md`](architecture/performance.md).
+* **Autoscaling** — the Flink Operator's **job autoscaler** (`flink.autoscaler.*` →
+  rescales parallelism via savepoint to hold 60% utilization) and a CPU **HPA** for
+  `location-consumer` (each replica change = a consumer-group rebalance, so it has a
+  120 s scale-down window).
+
+Walkthrough with fill-in results: [`docs/experiments/phase-8-load-and-tuning.md`](docs/experiments/phase-8-load-and-tuning.md).
+Interview Q&A: [`docs/interview-questions/phase-8.md`](docs/interview-questions/phase-8.md).
+
+<details><summary>Phase 7 — Kubernetes, Flink Operator, Argo CD (still here)</summary>
 
 **The stack on Kubernetes, delivered by GitOps.** `docker-compose.yml` still runs
 Phases 1–6 locally; Phase 7 packages the same topology as a Helm chart and hands the
@@ -96,6 +124,8 @@ Design + trade-offs (session vs application mode, state storage, sync waves):
 [`architecture/deployment.md`](architecture/deployment.md) and [`k8s/README.md`](k8s/README.md).
 Savepoint-upgrade experiment: [`docs/experiments/phase-7-savepoint-upgrade.md`](docs/experiments/phase-7-savepoint-upgrade.md).
 Interview Q&A: [`docs/interview-questions/phase-7.md`](docs/interview-questions/phase-7.md).
+
+</details>
 
 <details><summary>Phase 6 — failure engineering (still here)</summary>
 
@@ -268,12 +298,14 @@ make kafka-tail
 ├── kafka-connect/              Debezium connector config + notes
 ├── database/                   TimescaleDB + ClickHouse sink DDL
 ├── monitoring/                 Prometheus scrape config + Grafana provisioning
-├── helm/flowfleet/             the platform Helm chart (Phase 7)
+├── helm/flowfleet/             the platform Helm chart (Phase 7; values-load.yaml is Phase 8)
 ├── argocd/                     Argo CD app-of-apps (Phase 7)
 ├── k8s/                        Flink Operator + kube-prometheus-stack values, kind cluster
-├── architecture/               design docs (Kafka, Flink, CDC, idempotency, recovery, deployment)
+├── load-testing/               load-test method + committed result CSVs (Phase 8)
+├── docker-compose.load.yml     load overlay — 24 partitions, TaskManager ×3
+├── architecture/               design docs (Kafka, Flink, CDC, idempotency, recovery, deployment, performance)
 ├── docs/                       phase roadmap + interview questions + experiments
-├── scripts/                    smoke / kafka / schema-registry / connect / cdc-demo / flink / chaos / k8s
+├── scripts/                    smoke / kafka / schema-registry / connect / cdc-demo / flink / chaos / k8s / loadtest
 ├── flink/                      Flink jobs (Java 17, Flink 1.20) — one fat jar, one class per job
 └── services/
     ├── common/                 domain model, no framework deps (Java 17)
@@ -285,7 +317,7 @@ make kafka-tail
     └── location-consumer/      consumer-group member (rebalance experiment)
 ```
 
-Phase 8 adds load-test tooling under `scripts/`.
+All eight phases are in. Next: real numbers from a real cluster.
 
 ---
 

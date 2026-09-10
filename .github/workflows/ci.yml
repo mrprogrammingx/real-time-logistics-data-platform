@@ -72,12 +72,12 @@ jobs:
           curl -sSL -o /tmp/kc.tgz https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
           tar -xzf /tmp/kc.tgz -C /usr/local/bin kubeconform
 
-      - name: Render + validate the chart (default and kind values)
+      - name: Render + validate the chart (default, kind and load values)
         env:
           # CRD schemas for FlinkDeployment / FlinkSessionJob / ServiceMonitor / PodMonitor.
           CRD: https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
         run: |
-          for vf in "" "-f helm/flowfleet/values-kind.yaml"; do
+          for vf in "" "-f helm/flowfleet/values-kind.yaml" "-f helm/flowfleet/values-load.yaml"; do
             echo "::group::helm template $vf"
             helm template flowfleet helm/flowfleet -n flowfleet $vf \
               | kubeconform -strict -summary -verbose \

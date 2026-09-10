@@ -42,6 +42,17 @@ spec:
     {{- end }}
     metrics.reporter.prom.factory.class: "org.apache.flink.metrics.prometheus.PrometheusReporterFactory"
     metrics.reporter.prom.port: "9249"
+    {{- if $f.autoscaler.enabled }}
+    job.autoscaler.enabled: "true"
+    job.autoscaler.scaling.enabled: "true"
+    job.autoscaler.stabilization.interval: {{ $f.autoscaler.stabilizationInterval | quote }}
+    job.autoscaler.metrics.window: {{ $f.autoscaler.metricsWindow | quote }}
+    job.autoscaler.target.utilization: {{ $f.autoscaler.targetUtilization | quote }}
+    job.autoscaler.target.utilization.boundary: {{ $f.autoscaler.utilizationBoundary | quote }}
+    job.autoscaler.scale-up.grace-period: {{ $f.autoscaler.scaleUpGracePeriod | quote }}
+    job.autoscaler.scale-down.max-factor: {{ $f.autoscaler.scaleDownMaxFactor | quote }}
+    pipeline.max-parallelism: {{ $f.autoscaler.maxParallelism | quote }}
+    {{- end }}
     {{- range $k, $v := $f.extraConfig }}
     {{ $k }}: {{ $v | quote }}
     {{- end }}

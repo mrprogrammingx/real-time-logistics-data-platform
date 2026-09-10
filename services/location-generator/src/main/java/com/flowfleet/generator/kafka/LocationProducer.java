@@ -5,6 +5,7 @@ import com.flowfleet.generator.config.GeneratorProperties;
 import io.confluent.kafka.serializers.AbstractKafkaSchemaSerDeConfig;
 import io.confluent.kafka.serializers.KafkaAvroSerializer;
 import io.confluent.kafka.serializers.KafkaAvroSerializerConfig;
+import io.micrometer.core.instrument.FunctionCounter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.kafka.KafkaClientMetrics;
 import jakarta.annotation.PreDestroy;
@@ -56,8 +57,12 @@ public class LocationProducer implements AutoCloseable {
 
         this.metrics = new KafkaClientMetrics(producer);
         this.metrics.bindTo(registry);
-        registry.gauge("flowfleet.generator.sent", sent);
-        registry.gauge("flowfleet.generator.failed", failed);
+        // Monotonic counters -> Prometheus `flowfleet_generator_sent_total` etc., so the
+        // load test can `rate()` them.
+        FunctionCounter.builder("flowfleet.generator.sent", sent, AtomicLong::doubleValue)
+                .description("DriverLocation events acked by Kafka").register(registry);
+        FunctionCounter.builder("flowfleet.generator.failed", failed, AtomicLong::doubleValue)
+                .description("DriverLocation events that failed to produce").register(registry);
     }
 
     public void send(DriverLocation event) {
